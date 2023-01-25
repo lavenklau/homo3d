@@ -52,9 +52,9 @@ optimizing the bulk modulus :
 
 After the optimization finished, the optimized density field is stored in `<prefix>/rho` in OpenVDB format.
 
-The optimized elastic matrix is stored in `<prefix>/C` in binary format, which is an array of 36 float precision numbers.
-
 3rd party softwares like Rhino or Blender may be used to extract the solid part.
+
+The optimized elastic matrix is stored in `<prefix>/C` in binary format, which is an array of 36 float precision numbers.
 
 
 
