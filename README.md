@@ -50,6 +50,12 @@ optimizing the bulk modulus :
 ./homo3d -reso 128 -obj bulk -init randc -sym reflect6 -vol 0.3 -E 1e6 -mu 0.3
 ```
 
+After the optimization finished, the optimized density field is stored in `<prefix>/rho` in OpenVDB format.
+
+The optimized elastic matrix is stored in `<prefix>/C` in binary format, which is an array of 36 float precision numbers.
+
+3rd party softwares like Rhino or Blender may be used to extract the solid part.
+
 
 
 ### custom objective
