@@ -150,8 +150,8 @@ void example_opti_bulk(cfg::HomoConfig config) {
 	auto rhop = rho.conv(radial_convker_t<float, Spline4>(config.filterRadius)).pow(3);
 #endif
 	// create elastic tensor expression
-	//auto Ch = genCH(hom, rhop);
-	elastic_tensor_t<float, decltype(rhop)> Ch(hom, rhop);
+	auto Ch = genCH(hom, rhop);
+	//elastic_tensor_t<float, decltype(rhop)> Ch(hom, rhop);
 	AbortErr();
 	// create a oc optimizer
 	OCOptimizer oc(0.001, config.designStep, config.dampRatio);
