@@ -42,7 +42,7 @@ make -j4
 
 
 
-### example
+#### example
 
 optimizing the bulk modulus :
 
@@ -58,7 +58,7 @@ The optimized elastic matrix is stored in `<prefix>/C` in binary format, which i
 
 
 
-### custom objective
+#### custom objective
 
 To optimizing custom objective, option `-obj custom` should be used and add your objective and optimization routine in `Framework.cu` file, where we have provide few examples：
 
