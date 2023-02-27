@@ -150,8 +150,8 @@ void example_opti_bulk(cfg::HomoConfig config) {
 	auto rhop = rho.conv(radial_convker_t<float, Spline4>(config.filterRadius)).pow(3);
 #endif
 	// create elastic tensor expression
-	auto Ch = genCH(hom, rhop);
-	//elastic_tensor_t<float, decltype(rhop)> Ch(hom, rhop);
+	//auto Ch = genCH(hom, rhop);
+	elastic_tensor_t<float, decltype(rhop)> Ch(hom, rhop);
 	AbortErr();
 	// create a oc optimizer
 	OCOptimizer oc(0.001, config.designStep, config.dampRatio);
@@ -266,16 +266,99 @@ void example_opti_npr(cfg::HomoConfig config) {
 	Ch.writeTo(getPath("C"));
 }
 
-
-void example_yours(cfg::HomoConfig config) {
-	// Add routines....
+// usage of MMA optimizer
+void example_opti_shear_isotropy(cfg::HomoConfig config) {
+	// set output prefix
+	setPathPrefix(config.outprefix);
+	// create homogenization domain
+	Homogenization hom(config);
+	// update config resolution
+	for (int i = 0; i < 3; i++) config.reso[i] = hom.getGrid()->cellReso[i];
+	// define density expression
+	TensorVar<float> rho(config.reso[0], config.reso[1], config.reso[2]);
+	// initialize density
+	initDensity(rho, config);
+	// output initial density
+	rho.value().toVdb(getPath("initRho"));
+	// define material interpolation term
+	auto rhop = rho.conv(radial_convker_t<float, Spline4>(config.filterRadius)).pow(3);
+	// create elastic tensor expression
+	auto Ch = genCH(hom, rhop);
+	AbortErr();
+	// create a oc optimizer
+	int ne = config.reso[0] * config.reso[1] * config.reso[2];
+	MMAOptimizer mma(2, ne, 1, 0, 1000, 1);
+	mma.setBound(0.001, 1);
+	// record objective value
+	std::vector<double> objlist;
+	// convergence criteria
+	ConvergeChecker criteria(config.finthres);
+	// main loop of optimization
+	for (int iter = 0; iter < config.max_iter; iter++) {
+		// define objective expression
+		auto objective = -(Ch(3, 3) + Ch(4, 4) + Ch(5, 5)) / 3.f; // shear modulus
+		// abort when cuda error occurs
+		AbortErr();
+		float val = objective.eval();
+		// record objective value
+		objlist.emplace_back(val);
+		// compute derivative
+		objective.backward(1);
+		// output to screen
+		printf("\033[32m\n * Iter %d   obj = %.4e\033[0m\n", iter, val);
+		// check convergence
+		if (criteria.is_converge(iter, val)) { printf("= converged\n"); break; }
+		// make sensitivity symmetry
+		symmetrizeField(rho.diff(), config.sym);
+		// objective derivative
+		auto objGrad = rho.diff().flatten();
+		float aniScale = 1000.f;
+		auto constrain = ((Ch(3, 3) + Ch(4, 4) + Ch(5, 5)) * 2.f /
+			(Ch(0, 0) + Ch(1, 1) + Ch(2, 2) - Ch(0, 1) - Ch(0, 2) - Ch(1, 2)) - 1.f).pow(2) * aniScale;
+		float anistroy_constrain = constrain.eval();
+		constrain.backward(1);
+		float zener_ratio = sqrt(anistroy_constrain / aniScale) + 1;
+		symmetrizeField(rho.diff(), config.sym);
+		auto gGrad = rho.diff().flatten();
+		// constrain value
+		auto gval = getTempPool().getUnifiedBlock<float>();
+		float vol_scale = 1000.f;
+		float vol_ratio = rho.value().sum() / ne;
+		gval.proxy<float>()[0] = (vol_ratio - config.volRatio) * vol_scale;
+		gval.proxy<float>()[1] = anistroy_constrain * aniScale - 0.1f;
+		// constrain derivative
+		auto vol_ones = rho.diff().flatten();
+		vol_ones.reset(vol_scale / ne);
+		float* dgdx[2] = { vol_ones.data(), gGrad.data() };
+		// design variables
+		auto rhoArray = rho.value().flatten();
+		printf("zener ratio = %4.2e ; obj = %4.2e ; vol = %4.2e\n", zener_ratio, val, vol_ratio);
+		printf("constrain   = %4.2e ;       %4.2e\n", float(gval.proxy<float>()[0]), float(gval.proxy<float>()[1]));
+		// mma update
+		mma.update(iter, rhoArray.data(), objGrad.data(), gval.data<float>(), dgdx);
+		//update variable
+		rho.value().graft(rhoArray.data());
+		// output temp results
+		logIter(iter, config, rho, Ch, val);
+	}
+	//rhop.value().toMatlab("rhofinal");
+	hom.grid->writeDensity(getPath("density"), VoxelIOFormat::openVDB);
+	hom.grid->array2matlab("objlist", objlist.data(), objlist.size());
+	rho.value().toVdb(getPath("rho"));
+	Ch.writeTo(getPath("C"));
 
 }
 
+
+void example_yours(cfg::HomoConfig config) {
+	// add your routines here ...
+}
+
 void runCustom(cfg::HomoConfig config) {
-	example_opti_bulk(config);
+	//example_opti_bulk(config);
 	//example_opti_npr(config);
-	//example_yours(cfg::HomoConfig config);
+	//example_opti_shear_isotropy(config);
+	example_yours(config);
 }
 
 
