@@ -109,6 +109,35 @@ namespace culib {
 		~TempBufferPlace(void);
 	};
 
+	template<typename T>
+	struct TypeHostProxy {
+		T* g_data;
+		TypeHostProxy(T* p_val) : g_data(p_val) {}
+		template<typename ValueType, std::enable_if_t<std::is_scalar_v<ValueType>, int> = 0>
+		TypeHostProxy& operator=(ValueType val) {
+			T v = val;
+			cudaMemcpy(g_data, &v, sizeof(T), cudaMemcpyHostToDevice);
+			cuda_error_check;
+			return *this;
+		}
+		template<typename DT>
+		operator DT() const {
+			T val;
+			cudaMemcpy(&val, g_data, sizeof(T), cudaMemcpyDeviceToHost);
+			cuda_error_check;
+			return val;
+		}
+	};
+
+	template<typename T>
+	struct ArrayHostProxy {
+		T* g_array;
+		ArrayHostProxy(void* ptr) : g_array((T*)(ptr)) { }
+		TypeHostProxy<T> operator[](size_t offset) {
+			return TypeHostProxy<T>(g_array + offset);
+		}
+	};
+
 	struct ManagedTempBlock {
 		TempBufferPool& pool;
 		int startBlock;
@@ -125,6 +154,10 @@ namespace culib {
 		template<typename T> T& rdata(void) {
 			return *(T*)(pool.unifiedBuffer->template data<char*>() + startBlock * 32);
 		}
+
+		template<typename T>
+		ArrayHostProxy<T> proxy(void) { return ArrayHostProxy<T>(data<T>()); }
+
 		~ManagedTempBlock(void);
 	};
 
