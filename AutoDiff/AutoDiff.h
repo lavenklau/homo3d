@@ -53,6 +53,7 @@ namespace homo {
 	template<typename opExp1_t, typename opExp2_t, typename Scalar> struct div_exp_t;
 	template<typename opExp_t, typename Scalar> struct pow_exp_t;
 	template<typename opExp_t, typename Scalar> struct ln_exp_t;
+	template<typename opExp_t, typename Scalar> struct exp_exp_t;
 	template<typename Scalar = double> struct scalar_exp_t;
 	template<typename subVar = void, typename Scalar = double> struct var_exp_t;
 	template<typename Scalar> struct rvar_exp_t;
@@ -171,12 +172,12 @@ namespace homo {
 		}
 
 		template<typename Scalar>
-		__host_device_func Scalar exp_(Scalar v, Scalar k) {
+		__host_device_func Scalar exp_(Scalar v) {
 			if (std::is_same_v<Scalar, double>) {
-				return exp(v, k);
+				return exp(v);
 			}
 			else {
-				return expf(v, k);
+				return expf(v);
 			}
 		}
 
@@ -357,6 +358,10 @@ namespace homo {
 
 		__host_device_func auto log(void) {
 			return ln_exp_t<subExp_t, Scalar>(static_cast<subExp_t*>(this)->template refer<>());
+		}
+
+		__host_device_func auto exp(void) {
+			return exp_exp_t<subExp_t, Scalar>(static_cast<subExp_t*>(this)->template refer<>());
 		}
 	};
 

@@ -447,6 +447,7 @@ namespace homo {
 	template<typename Scalar, typename Kernel, typename opExp_t> struct conv_tsexp_t;
 	template<typename Scalar, typename opExp> struct linear_umker_t;
 	template<typename Scalar, typename opExp> struct pow_umker_t;
+	template<typename Scalar, typename opExp> struct exp_umker_t;
 	template<typename Scalar> struct eye_umker_t;
 
 #define IS_TYPE_V(TypeName) \
@@ -457,6 +458,7 @@ template<typename Arg> constexpr bool is_##TypeName##_v = is_##TypeName<Arg>::va
 	IS_TYPE_V(linear_umker)
 	IS_TYPE_V(pow_umker)
 	IS_TYPE_V(unarymap_tsexp)
+	IS_TYPE_V(exp_umker)
 
 	template<typename subExp_t, typename T>
 	struct tsexp_method_t {
@@ -477,6 +479,25 @@ template<typename Arg> constexpr bool is_##TypeName##_v = is_##TypeName<Arg>::va
 			Kernel powker(eye_umker_t<T>(), p);
 			auto& subexp = *static_cast<SubExp*>(this);
 			return unarymap_tsexp_t<T, Kernel, SubExp>(subexp, powker);
+		}
+
+		template <typename Scalar = T,
+				  typename SubExp = subExp_t,
+				  std::enable_if_t<is_unarymap_tsexp_v<SubExp>, int> = 0>
+		__host_device_func auto exp(void) {
+			exp_umker_t<T, eye_umker_t<T>> expker((eye_umker_t<T>()));
+			auto &subexp = *static_cast<SubExp *>(this);
+			return subexp.composite(expker);
+		}
+
+		template<typename Scalar = T, 
+			typename SubExp = subExp_t,
+			std::enable_if_t<!is_unarymap_tsexp_v<SubExp>, int> = 0>
+		__host_device_func auto exp(void) {
+			using Kernel = exp_umker_t<T, eye_umker_t<T>>;
+			Kernel expker((eye_umker_t<T>()));
+			auto& subexp = *static_cast<SubExp*>(this);
+			return unarymap_tsexp_t<T, Kernel, SubExp>(subexp, expker);
 		}
 
 		template<typename Scalar = T, 
@@ -619,6 +640,12 @@ template<typename Arg> constexpr bool is_##TypeName##_v = is_##TypeName<Arg>::va
 			auto& subker = static_cast<SubKer&>(*this);
 			return pow_umker_t<Scalar, SubKer>(subker, op.p);
 		}
+		template <typename opKer, typename SubKer = subKer,
+				  std::enable_if_t<!is_exp_umker_v<SubKer>, int> = 0
+		> __host_device_func auto composite(const exp_umker_t<Scalar, opKer> &op) {
+			auto &subker = static_cast<SubKer &>(*this);
+			return exp_umker_t<Scalar, SubKer>(subker);
+		}
 	};
 
 	template<typename Scalar>
@@ -673,6 +700,35 @@ template<typename Arg> constexpr bool is_##TypeName##_v = is_##TypeName<Arg>::va
 		template<typename rArg>
 		__host_device_func auto evalExp(rArg arg) {
 			return op.template evalExp<rArg>(arg).pow(p);
+		}
+		//using Exp = decltype(((pow_umker_t<Scalar, opExp>*)nullptr)->evalExp(*((rvar_exp_t<Scalar>*)nullptr)));
+		__host_device_func auto eval(var_exp_t<void,Scalar>& v) {
+			auto expr = evalExp(v.ref());
+			expr.eval();
+			expr.backward(1);
+			return expr;
+		}
+		__host_device_func Scalar eval(Scalar val, Scalar& diffe) {
+			rvar_exp_t<Scalar> v(val, diffe);
+			auto expr = evalExp(v);
+			expr.eval();
+			expr.backward(1);
+			//diffe = expr.diff();
+			return expr.value();
+		}
+	};
+
+	template<typename Scalar, typename opExp>
+	struct exp_umker_t : public um_ker_t<Scalar, exp_umker_t<Scalar, opExp>>
+	{
+		using opExp_t = opExp;
+		opExp op;
+		using Base = um_ker_t<Scalar, exp_umker_t<Scalar, opExp>>;
+		exp_umker_t(opExp op_) : op(op_) {}
+
+		template<typename rArg>
+		__host_device_func auto evalExp(rArg arg) {
+			return op.template evalExp<rArg>(arg).exp();
 		}
 		//using Exp = decltype(((pow_umker_t<Scalar, opExp>*)nullptr)->evalExp(*((rvar_exp_t<Scalar>*)nullptr)));
 		__host_device_func auto eval(var_exp_t<void,Scalar>& v) {
