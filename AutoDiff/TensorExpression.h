@@ -257,6 +257,24 @@ namespace homo {
 #endif
 		void toVdb(const std::string& fname) { tensor2vdb(fname, view()); }
 		void fromVdb(const std::string& fname, bool interpolation = true) { vdb2tensor(fname, view(),interpolation); }
+		void fromHost(const std::vector<T>& hostT) {
+#ifdef __CUDACC__
+			auto tf = view();
+			cudaMemcpy2D(tf.data(), tf.getPitchT() * sizeof(float),
+						 hostT.data(), tf.size(0) * sizeof(float), tf.size(0) * sizeof(float),
+						 tf.size(1) * tf.size(2), cudaMemcpyHostToDevice);
+			cuda_error_check;
+#endif
+		}
+		void toHost(std::vector<T>& hostT) {
+#ifdef __CUDACC__
+			auto tf = view();
+			cudaMemcpy2D(hostT.data(), tf.size(0) * sizeof(float),
+					tf.data(), tf.getPitchT() * sizeof(float),
+					tf.size(0) * sizeof(float), tf.size(1) * tf.size(2), cudaMemcpyDeviceToHost);
+			cuda_error_check;
+#endif
+		}
 		void proj(float beta = 20.f, float eta = 0.5f, float a = 1.f, float b = 0.f) {
 			tensorProject(view(), beta, eta, a, b);
 		}
