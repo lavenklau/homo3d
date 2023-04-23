@@ -146,7 +146,8 @@ void testHomogenization(cfg::HomoConfig config) {
 	}
 	else if (config.testname == "vcycle") {
 		Homogenization hom(config);
-		hom.getGrid()->readDensity(config.inputrho, VoxelIOFormat::openVDB);
+		//hom.getGrid()->readDensity(config.inputrho, VoxelIOFormat::openVDB);
+		hom.getGrid()->randDensity();
 		hom.mg_->updateStencils();
 		hom.getGrid()->useFchar(4);
 		hom.mg_->test_v_cycle();

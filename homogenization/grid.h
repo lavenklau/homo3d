@@ -215,7 +215,7 @@ struct Grid {
 
 	void assembleHostMatrix(void);
 
-	void gs_relaxation(float w_SOR = 1.f);
+	void gs_relaxation(float w_SOR = 1.f, int times_ = 1);
 
 	void gs_relaxation_ex(float w_SOR = 1.f);
 
@@ -263,6 +263,8 @@ struct Grid {
 
 	void reset_force(void);
 
+	void translateForce(int type_, double* v[3]); // 1. zero dirichlet force; 2. zero global translation
+
 	void reset_density(float rho);
 
 	void randDensity(void);
@@ -307,6 +309,7 @@ struct Grid {
 	void setMacroStrainDisplacement(int i, double* u[3]);
 
 	void v3_reset(double* v[3], int len = -1);
+	void v3_const(double* v[3], const double v_const[3]);
 	void v3_rand(double* v[3], double low, double upp, int len = -1);
 	double v3_norm(double* v[3], bool removePeriodDof = false, int len = -1);
 	double v3_diffnorm(double* v[3], double* u[3], int len = -1);
@@ -315,7 +318,7 @@ struct Grid {
 	void v3_download(double* hst[3], double* dev[3]);
 	void v3_removeT(double* u[3], double tHost[3]);
 	void v3_linear(double a1, double* v1[3], double a2, double* v2[3], double* v[3], int len = -1);
-	void v3_toMatlab(const std::string& mname, double* v[3], int len = -1);
+	void v3_toMatlab(const std::string& mname, double* v[3], int len = -1, bool removePeriodDof = false);
 	void v3_toMatlab(const std::string& mname, float* v[3], int len = -1);
 	void v3_write(const std::string& filename, double* v[3], int len = -1);
 	void v3_read(const std::string& filename, double* v[3]);
@@ -341,10 +344,11 @@ struct Grid {
 	std::vector<int> getVertexLexidMap(void);
 	std::vector<int> getCellLexidMap(void);
 
-	void stencil2matlab(const std::string& name);
+	void stencil2matlab(const std::string& name, bool removePeriodDof = true);
+	void restrictMatrix2matlab(const std::string& name, Grid& coaseGrid);
 	void lexistencil2matlab(const std::string& name);
 
-	Eigen::SparseMatrix<double> stencil2matrix(void);
+	Eigen::SparseMatrix<double> stencil2matrix(bool removePeriodDof = true);
 
 	int vgsid2lexid_h(int gsid, bool removePeriodDof = false);
 	void vgsid2lexpos_h(int gsid, int pos[3]);
@@ -360,6 +364,7 @@ struct Grid {
 	//void gather_boundary_force(double* f[3]);
 	void enforce_period_boundary(double* v[3], bool additive = false);
 	void enforce_dirichlet_boundary(double* v[3]);
+	void enforce_dirichlet_stencil(void);
 	void enforce_period_vertex(double* v[3], bool additive = false);
 	void enforce_period_vertex(float* v[3], bool additive = false);
 	void pad_vertex_data(double* v[3]);

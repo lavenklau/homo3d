@@ -401,9 +401,9 @@ __global__ void gs_relaxation_otf_kernel_opt(
 		u[1] = w * (gF[1][ev[13]] - KeU[1] - u[0] * t1 - u[2] * t3) / d + (1. - w) * u[1];
 		u[2] = w * (gF[2][ev[13]] - KeU[2] - u[0] * t2 - u[1] * t3) / d + (1. - w) * u[2];
 
-		if (vflag.is_dirichlet_boundary()) {
-			u[0] = 0; u[1] = 0; u[2] = 0;
-		}
+		//if (vflag.is_dirichlet_boundary()) {
+		//	u[0] = 0; u[1] = 0; u[2] = 0;
+		//}
 
 		gU[0][ev[13]] = u[0]; gU[1][ev[13]] = u[1]; gU[2][ev[13]] = u[2];
 	}
@@ -889,7 +889,7 @@ __global__ void update_residual_otf_kernel_opt(
 		double r[3];
 		r[0] = gF[0][ev[13]] - KeU[0]; r[1] = gF[1][ev[13]] - KeU[1]; r[2] = gF[2][ev[13]] - KeU[2];
 
-		if (vflag.is_dirichlet_boundary()) { r[0] = 0; r[1] = 0; r[2] = 0; }
+		//if (vflag.is_dirichlet_boundary()) { r[0] = 0; r[1] = 0; r[2] = 0; }
 
 		gR[0][ev[13]] = r[0]; gR[1][ev[13]] = r[1]; gR[2][ev[13]] = r[2];
 	}

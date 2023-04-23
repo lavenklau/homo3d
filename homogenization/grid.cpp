@@ -307,7 +307,7 @@ void Grid::useFchar(int k)
 	useGrid_g();
 	enforce_unit_macro_strain(k);
 	//setForce(fchar_g[k]);
-	enforce_dirichlet_boundary(f_g);
+	//enforce_dirichlet_boundary(f_g);
 	enforce_period_vertex(f_g, true);
 	pad_vertex_data(f_g);
 	// DEBUG
@@ -354,11 +354,17 @@ bool homo::Grid::solveHostEquation(void)
 
 	Eigen::Matrix<double, -1, 1> x = hostBiCGSolver.solve(b);
 	if (hostBiCGSolver.info() != Eigen::Success) {
-		printf("\033[31mhost equation failed to solve\033[0m\n");
+		hostBiCGSolver.compute(Khost);
+		hostBiCGSolver.solve(b);
+		printf("\033[31mhost equation failed to solve, err = %d\033[0m\n", int(hostBiCGSolver.info()));
+		eigen2ConnectedMatlab("T", transBase);
+		eigen2ConnectedMatlab("Khost", Khost);
+		eigen2ConnectedMatlab("x", x);
 		return false;
 	}
 
 	//Eigen::Matrix<double, 3, 1> xmean = x.reshaped(3, b.rows() / 3).colwise().sum() / (b.rows() / 3);
+	x = x - transBase * (transBase.transpose() * x);
 	eigen2ConnectedMatlab("x", x);
 
 	v3_fromMatrix(u_g, x, false);
@@ -375,11 +381,47 @@ void homo::Grid::testCoarsestModes(void)
 	//array2matlab("vidmap", vidmap.data(), vidmap.size());
 }
 
+void homo::Grid::enforce_dirichlet_stencil(void) {
+	for (int cc = 0; cc < 8; cc++) {
+		int d_pos[3] = { (cc % 2) * cellReso[0], (cc / 2 % 2) * cellReso[1], (cc / 4) * cellReso[2] };
+		int d_lexid = vlexpos2vlexid_h(d_pos);
+		int d_gsid = vlexid2gsid(d_lexid, true);
+		for (int offid = 0; offid < 27; offid++) {
+			int off[3] = { offid % 3 - 1 , offid / 3 % 3 - 1 , offid / 9 - 1 };
+			int nei_pos[3] = { d_pos[0] + off[0], d_pos[1] + off[1], d_pos[2] + off[2] };
+			for (int kk = 0; kk < 3; kk++) {
+				if (nei_pos[kk]<0 || nei_pos[kk]>cellReso[kk]) {
+					nei_pos[kk] = (nei_pos[kk] + cellReso[kk]) % cellReso[kk];
+				}
+			}
+			int nei_lexid = vlexpos2vlexid_h(nei_pos);
+			int nei_gsid = vlexid2gsid(nei_lexid, true);
+			if (offid != 13) {
+				for (int i = 0; i < 9; i++) {
+					cudaMemset(stencil_g[offid][i] + d_gsid, 0, sizeof(stencil_g[0][0][0]));
+					cudaMemset(stencil_g[26 - offid][i] + nei_gsid, 0, sizeof(stencil_g[0][0][0]));
+				}
+			}
+			else {
+				for (int i = 0; i < 9; i++) {
+					cudaMemset(stencil_g[offid][i] + d_gsid, 0, sizeof(stencil_g[0][0][0]));
+				}
+				for (int row = 0; row < 3; row++) {
+					double d = 1;
+					cudaMemcpy(stencil_g[13][row * 3 + row] + d_gsid, &d, sizeof(double), cudaMemcpyHostToDevice);
+				}
+			}
+		}
+	}
+	//enforce_period_stencil(false);
+}
+
 void homo::Grid::assembleHostMatrix(void)
 {
 	Khost = stencil2matrix();
 	eigen2ConnectedMatlab("Khost", Khost);
 	hostBiCGSolver.compute(Khost);
+	hostBiCGSolver.setTolerance(1e-10);
 	// init translation base
 	transBase.resize(Khost.rows(), 6);
 	transBase.fill(0);
@@ -414,6 +456,17 @@ void homo::Grid::assembleHostMatrix(void)
 	}
 	printf("Coarse system degenerate rank = %d\n", int(transBase.cols()));
 	eigen2ConnectedMatlab("transbase", transBase);
+
+	// DEBUG
+	if (1) {
+		Eigen::Matrix<double, -1, 1> bhost(Khost.rows(), 1);
+		bhost.setRandom();
+		bhost = bhost - transBase * (transBase.transpose() * bhost);
+		Eigen::Vector<double, -1> x = hostBiCGSolver.solve(bhost);
+		if (hostBiCGSolver.info() != Eigen::Success) {
+			printf("\033[31mSolver test failed, err = %d\033[0m\n", int(hostBiCGSolver.info()));
+		}
+	}
 }
 
 void homo::Grid::gs_relaxation_profile(float w_SOR /*= 1.f*/)
@@ -617,13 +670,24 @@ void homo::Grid::v3_download(double* hst[3], double* dev[3])
 	}
 }
 
-void homo::Grid::v3_toMatlab(const std::string& mname, double* v[3], int len /*= -1*/)
+void homo::Grid::v3_toMatlab(const std::string& mname, double* v[3], int len /*= -1*/, bool removePeriodDof /*= false*/)
 {
 #ifdef ENABLE_MATLAB
 	if (len == -1) len = n_gsvertices();
 	Eigen::Matrix<double, -1, 3> vmat(len, 3);
 	for (int i = 0; i < 3; i++) {
 		cudaMemcpy(vmat.col(i).data(), v[i], sizeof(double) * len, cudaMemcpyDeviceToHost);
+	}
+	if (removePeriodDof) {
+		int nv = cellReso[0] * cellReso[1] * cellReso[2];
+		Eigen::Matrix<double, -1, -1> umat(3, nv);
+		for (int i = 0; i < nv; i++) {
+			int pos[3] = { i % cellReso[0], i / cellReso[0] % cellReso[1], i / (cellReso[0] * cellReso[1]) };
+			int gsid = vlexid2gsid(i);
+			umat.col(i) = vmat.row(gsid).transpose();
+		}
+		eigen2ConnectedMatlab(mname, umat);
+		return;
 	}
 	eigen2ConnectedMatlab(mname, vmat);
 #endif
@@ -750,12 +814,48 @@ void homo::Grid::array2matlab(const std::string& matname, float* hostdata, int l
 #endif
 }
 
-void homo::Grid::stencil2matlab(const std::string& name)
+void homo::Grid::stencil2matlab(const std::string& name, bool removePeriodDof /*= true*/)
 {
 #ifdef ENABLE_MATLAB
-	auto k = stencil2matrix();
+	auto k = stencil2matrix(removePeriodDof);
 	eigen2ConnectedMatlab(name, k);
 #endif
+}
+
+void homo::Grid::restrictMatrix2matlab(const std::string& name, Grid& coarseGrid)
+{
+	std::vector<Eigen::Triplet<double>> triplist;
+	auto vflags = coarseGrid.getVertexflags();
+	for (int k = 0; k < coarseGrid.n_gsvertices(); k++) {
+		if (vflags[k].is_fiction() || vflags[k].is_period_padding() /*|| vflags[k].is_max_boundary()*/) continue;
+		int vidCoarse = k;
+		int vCoarsePos[3];
+		coarseGrid.vgsid2lexpos_h(k, vCoarsePos);
+		if (vCoarsePos[0] >= coarseGrid.cellReso[0] ||
+			vCoarsePos[1] >= coarseGrid.cellReso[1] || vCoarsePos[2] >= coarseGrid.cellReso[2]) {
+			continue;
+		}
+		for (int kk = 0; kk < 3; kk++) vCoarsePos[kk] = (vCoarsePos[kk] + coarseGrid.cellReso[kk]) % coarseGrid.cellReso[kk];
+		int vid = coarseGrid.vlexpos2vlexid_h(vCoarsePos, true);
+		int vpos[3] = { vCoarsePos[0] * 2, vCoarsePos[1] * 2, vCoarsePos[2] * 2 };
+		for (int i = 0; i < 27; i++) {
+			int neioffset[3] = { i % 3 - 1, i / 3 % 3 - 1, i / 9 - 1 };
+			double w = (2. - abs(neioffset[0])) * (2. - abs(neioffset[1])) * (2. - abs(neioffset[2])) / 8;
+			if (w < 0) printf("negative w = %lf\n", w);
+			int vneipos[3] = { neioffset[0] + vpos[0], neioffset[1] + vpos[1], neioffset[2] + vpos[2] };
+			for (int kk = 0; kk < 3; kk++) vneipos[kk] = (vneipos[kk] + cellReso[kk]) % cellReso[kk];
+			int vjd = vlexpos2vlexid_h(vneipos, true);
+			for (int row = 0; row < 3; row++) {
+				triplist.emplace_back(vid * 3 + row, vjd * 3 + row, w);
+			}
+		}
+	}
+	int nvfine = (cellReso[0]) * (cellReso[1]) * (cellReso[2]);
+	int nvcoarse = (coarseGrid.cellReso[0]) * (coarseGrid.cellReso[1]) * (coarseGrid.cellReso[2]);
+
+	Eigen::SparseMatrix<double> R(nvcoarse * 3, nvfine * 3);
+	R.setFromTriplets(triplist.begin(), triplist.end());
+	eigen2ConnectedMatlab(name, R);
 }
 
 void homo::Grid::lexistencil2matlab(const std::string& name)
@@ -792,10 +892,16 @@ void homo::Grid::lexistencil2matlab(const std::string& name)
 	eigen2ConnectedMatlab(name, K);
 }
 
-Eigen::SparseMatrix<double> homo::Grid::stencil2matrix(void)
+Eigen::SparseMatrix<double> homo::Grid::stencil2matrix(bool removePeriodDof /*= true*/)
 {
 	Eigen::SparseMatrix<double> K;
-	int ndof = cellReso[0] * cellReso[1] * cellReso[2] * 3;
+	int ndof;
+	if (removePeriodDof) {
+		ndof = cellReso[0] * cellReso[1] * cellReso[2] * 3;
+	} else {
+		ndof = (cellReso[0] + 1) * (cellReso[1] + 1) * (cellReso[2] + 1) * 3;
+	}
+	
 	K.resize(ndof, ndof);
 	std::vector<float> kij(n_gsvertices());
 	using trip = Eigen::Triplet<double>;
@@ -824,21 +930,32 @@ Eigen::SparseMatrix<double> homo::Grid::stencil2matrix(void)
 					int vpos[3];
 					vgsid2lexpos_h(k, vpos);
 					int oldvpos[3] = { vpos[0],vpos[1],vpos[2] };
-					if (vpos[0] >= cellReso[0] || vpos[1] >= cellReso[1] || vpos[2] >= cellReso[2]) continue;
-					int vid = vlexpos2vlexid_h(vpos, true);
+					if (removePeriodDof) {
+						if (vpos[0] >= cellReso[0] || vpos[1] >= cellReso[1] || vpos[2] >= cellReso[2]) continue;
+					} else {
+						if (vpos[0] >= cellReso[0] + 1 || vpos[1] >= cellReso[1] + 1 || vpos[2] >= cellReso[2] + 1) continue;
+					}
+					int vid = vlexpos2vlexid_h(vpos, removePeriodDof);
 					if (vid == 0 && i == 20) {
 						//printf("k = %d  vid = %d  vpos = (%d, %d, %d)\n", k, vid, vpos[0], vpos[1], vpos[2]);
 					}
 					vpos[0] += noff[0]; vpos[1] += noff[1]; vpos[2] += noff[2];
-					int neiid = vlexpos2vlexid_h(vpos, true);
+					if (removePeriodDof) {
+						for (int kk = 0; kk < 3; kk++) { vpos[kk] = (vpos[kk] + cellReso[kk]) % cellReso[kk]; }
+					} else {
+						bool outBound = false;
+						for (int kk = 0; kk < 3; kk++) { outBound = outBound || vpos[kk] < 0 || vpos[kk]>cellReso[kk]; }
+						if (outBound) continue;
+					}
+					int neiid = vlexpos2vlexid_h(vpos, removePeriodDof);
 					if (vid == 0) {
 						//printf("k = %d neiid = %d[%d]  off = (%d, %d, %d) nei = (%d, %d, %d)  val = %e\n",
 						//	k, neiid, i, noff[0], noff[1], noff[2], vpos[0], vpos[1], vpos[2], kij[k]);
 					}
-					if (vid == 20 && neiid == 16) {
-						//printf("vpos = (%d, %d, %d)  noff = (%d, %d, %d)\n",
-						//	oldvpos[0], oldvpos[1], oldvpos[2],
-						//	noff[0], noff[1], noff[2]);
+					if (vid == 759 && neiid == 34582) {
+						printf("vpos = (%d, %d, %d)  noff = (%d, %d, %d)\n",
+							oldvpos[0], oldvpos[1], oldvpos[2],
+							noff[0], noff[1], noff[2]);
 					}
 					trips.emplace_back(vid * 3 + j / 3, neiid * 3 + j % 3, kij[k]);
 				}
@@ -850,17 +967,17 @@ Eigen::SparseMatrix<double> homo::Grid::stencil2matrix(void)
 		Eigen::Matrix<float, 24, 24> ke = getTemplateMatrix();
 		for (int i = 0; i < eflags.size(); i++) {
 			if (eflags[i].is_fiction() || eflags[i].is_period_padding()) continue;
-			float rho_p = powf(rhohost[i], 3);
+			float rho_p = powf(rhohost[i], 1);
 			int epos[3];
 			egsid2lexpos_h(i, epos);
 			for (int vi = 0; vi < 8; vi++) {
 				int vipos[3] = { epos[0] + vi % 2, epos[1] + vi / 2 % 2, epos[2] + vi / 4 };
 				// todo check Dirichlet boundary
-				int vi_id = vlexpos2vlexid_h(vipos, true);
+				int vi_id = vlexpos2vlexid_h(vipos, removePeriodDof);
 				for (int vj = 0; vj < 8; vj++) {
 					int vjpos[3] = { epos[0] + vj % 2, epos[1] + vj / 2 % 2, epos[2] + vj / 4 };
 					// todo check Dirichlet boundary
-					int vj_id = vlexpos2vlexid_h(vjpos, true);
+					int vj_id = vlexpos2vlexid_h(vjpos, removePeriodDof);
 					for (int krow = 0; krow < 3; krow++) {
 						for (int kcol = 0; kcol < 3; kcol++) {
 							int ir = vi_id * 3 + krow;
@@ -1038,3 +1155,16 @@ void homo::Grid::test_gs_relaxation(void)
 	}
 	exit(0);
 }
+void homo::Grid::translateForce(int type_, double* v[3]) {
+	double t_f[3];
+	if (type_ == 1) {
+		int gsid = vlexid2gsid(0, true);
+		for (int i = 0; i < 3; i++)
+			cudaMemcpy(t_f + i, v[i] + gsid, sizeof(double), cudaMemcpyDeviceToHost);
+	} else if (type_ == 2) {
+		v3_average(v, t_f, true);
+	}
+
+	v3_removeT(v, t_f);
+}
+

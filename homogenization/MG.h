@@ -23,6 +23,8 @@ struct MG{
 
 	void v_cycle(float w_SOR = 1.f, int pre = 1, int post = 1);
 
+	void v_cycle(std::vector<int> gstimes_);
+
 	void v_cycle_verbose(float w_SOR = 1.f, int pre = 1, int post = 1);
 
 	void reset_displacement(void);

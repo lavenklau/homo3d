@@ -1,4 +1,6 @@
 #include "homogenization/Framework.cuh"
+#include "fstream"
+#include "sstream"
 
 using namespace homo;
 using namespace culib;

@@ -53,19 +53,43 @@ void homo::MG::v_cycle(float w_SOR /*= 1.f*/, int pre /*= 1*/, int post /*= 1*/)
 		if (i == grids.size() - 1) {
 			grids[i]->solveHostEquation();
 		} else {
-			grids[i]->gs_relaxation(w_SOR);
+			grids[i]->gs_relaxation(w_SOR, pre);
 		}
 	}
 
 	for (int i = grids.size() - 2; i >= 0; i--) {
 		grids[i]->prolongate_correction();
-		grids[i]->gs_relaxation(w_SOR);
+		grids[i]->gs_relaxation(w_SOR, post);
 	}
 
 	// not necessary here
 	//grids[0]->update_residual();
 
 	return /*grids[0]->relative_residual()*/;
+}
+
+void homo::MG::v_cycle(std::vector<int> gstimes_)
+{
+	for (int i = 0; i < grids.size(); i++) {
+		if (i != 0) {
+			grids[i - 1]->update_residual();
+			grids[i]->restrict_residual();
+			grids[i]->reset_displacement();
+		}
+		if (i == grids.size() - 1) {
+			if (i < gstimes_.size() && gstimes_[i]>0) {
+				grids[i]->solveHostEquation();
+			}
+		}
+		else {
+			grids[i]->gs_relaxation(1.f, i < gstimes_.size() ? gstimes_[i] : 0);
+		}
+	}
+
+	for (int i = grids.size() - 2; i >= 0; i--) {
+		grids[i]->prolongate_correction();
+		grids[i]->gs_relaxation(1.f, i < gstimes_.size() ? gstimes_[i] : 0);
+	}
 }
 
 void homo::MG::v_cycle_verbose(float w_SOR /*= 1.f*/, int pre /*= 1*/, int post /*= 1*/)
@@ -350,7 +374,94 @@ void homo::MG::test_v_cycle(void)
 
 	int itn = 0;
 
-#if 0
+#if 1
+	int fineid = 1;
+	int coarseid = 2;
+	double vmean[3] = { 1,0,0 };
+	////grids[0]->v3_const(grids[0]->f_g, vmean);
+	////grids[0]->v3_average(grids[0]->f_g, vmean, true);
+	////printf("vmean = (%e, %e, %e)\n", vmean[0], vmean[1], vmean[2]);
+	////grids[0]->v3_removeT(grids[0]->f_g, vmean);
+	////grids[0]->v3_average(grids[0]->f_g, vmean, true);
+	////printf("vmean = (%e, %e, %e)\n", vmean[0], vmean[1], vmean[2]);
+	//grids[fineid]->stencil2matlab("K0", true);
+	//grids[fineid]->update_residual();
+	//grids[fineid]->v3_toMatlab("r", grids[fineid]->r_g, -1, true);
+	//grids[fineid]->restrictMatrix2matlab("R", *grids[coarseid]);
+	//grids[coarseid]->restrict_residual();
+	//grids[coarseid]->v3_rand(grids[coarseid]->u_g, -1, 1);
+	//grids[coarseid]->enforce_period_vertex(grids[coarseid]->u_g);
+	//grids[coarseid]->pad_vertex_data(grids[coarseid]->u_g);
+	//grids[coarseid]->v3_toMatlab("u1", grids[coarseid]->u_g, -1,true);
+	//grids[coarseid]->v3_toMatlab("Fr", grids[coarseid]->f_g, -1, true);
+	//grids[coarseid]->stencil2matlab("K1", true);
+	//grids[fineid]->reset_displacement();
+	//grids[fineid]->prolongate_correction();
+	//grids[fineid]->v3_toMatlab("u0", grids[fineid]->u_g, -1, true);
+	//grids[0]->stencil2matlab("K0", true);
+	//grids[0]->restrictMatrix2matlab("R", *grids[1]);
+	grids[0]->translateForce(2, grids[0]->f_g);// HAS BUG!
+	grids[0]->v3_toMatlab("f0", grids[0]->f_g, -1, true);
+	std::vector<double> errhis;
+	double* u0[3]; grids[0]->v3_create(u0); grids[0]->v3_reset(u0);
+	double* f0[3]; grids[0]->v3_create(f0); grids[0]->v3_reset(f0);
+	grids[0]->v3_copy(f0, grids[0]->f_g);
+	grids[0]->update_residual();
+	for (int itn = 0; itn < 100; itn++) {
+		//grids[0]->v3_copy(grids[0]->f_g, grids[0]->r_g);
+		//grids[0]->enforce_period_boundary(grids[0]->f_g);
+		//grids[0]->v3_reset(grids[0]->u_g);
+		// vcycle
+		if (itn < 100) {
+			std::vector<int> ones(grids.size(), 1);
+			v_cycle(1.f);
+			//v_cycle({ 1,1,1 });
+			//grids[0]->gs_relaxation();
+			//grids[0]->update_residual();
+			//grids[1]->restrict_residual();
+			//grids[1]->reset_displacement();
+			//grids[1]->gs_relaxation();
+			//grids[0]->prolongate_correction();
+			//grids[0]->gs_relaxation();
+			//grids[0]->gs_relaxation(1.f);
+		}
+		else {
+			grids[0]->gs_relaxation(1.f);
+		}
+		//grids[0]->v3_linear(1, grids[0]->u_g, 1, u0, grids[0]->u_g);
+		//grids[0]->v3_copy(grids[0]->f_g, f0);
+		//grids[0]->translateForce(2, grids[0]->u_g);
+		grids[0]->update_residual();
+		double rel = grids[0]->relative_residual();
+		//grids[0]->v3_toMatlab("xi", grids[0]->u_g, -1, true);
+		//grids[0]->v3_copy(u0, grids[0]->u_g);
+		errhis.push_back(rel);
+		printf("Iter. %d : rel = %e\n", itn, rel);
+	}
+	grids[0]->v3_copy(u0, grids[0]->u_g);
+	grids[0]->v3_copy(f0, grids[0]->f_g);
+	grids[0]->v3_toMatlab("r0", grids[0]->r_g, -1, true);
+	grids[0]->v3_copy(grids[0]->f_g, grids[0]->r_g);
+	//grids[0]->enforce_period_boundary(grids[0]->f_g);
+	grids[0]->reset_displacement();
+	for (int itn = 0; itn < 100; itn++) {
+		grids[0]->gs_relaxation();
+		//v_cycle(1.f);
+		//grids[0]->v3_toMatlab("xi", grids[0]->u_g, -1, true);
+		grids[0]->update_residual();
+		double rel = grids[0]->relative_residual();
+		errhis.push_back(rel);
+		printf("Post Iter. %d : rel = %e\n", itn, rel);
+	}
+	grids[0]->v3_linear(1, grids[0]->u_g, 1, u0, grids[0]->u_g);
+	grids[0]->v3_copy(grids[0]->f_g, f0);
+	grids[0]->update_residual();
+	double rel = grids[0]->relative_residual();
+	printf("Final  rel = %e\n", rel);
+	grids[0]->v3_toMatlab("r", grids[0]->r_g, -1, true);
+	array2ConnectedMatlab("errhis", errhis.data(), errhis.size());
+	printf("=finished\n");
+#elif 0
 	grids[0]->v3_toMatlab("f", grids[0]->f_g);
 	double fnorm = grids[0]->v3_norm(grids[0]->f_g);
 	grids[0]->writeDensity(getPath("testrho"), VoxelIOFormat::openVDB);

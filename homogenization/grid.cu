@@ -7,7 +7,9 @@
 #include "homoCommon.cuh"
 
 #define USING_SOR  1
-#define DIRICHLET_STRENGTH 1e7
+//#define DIRICHLET_STRENGTH 1e7
+//#define DIRICHLET_STRENGTH 1e3
+#define DIRICHLET_STRENGTH -1
 
 #define USE_LAME_MATRIX 1
 
@@ -423,7 +425,7 @@ __global__ void gs_relaxation_otf_kernel(
 					if (!nvflag.is_fiction()) {
 						double u[3] = { gU[0][vneighId], gU[1][vneighId], gU[2][vneighId] };
 						if (nvflag.is_dirichlet_boundary()) {
-							u[0] = u[1] = u[2] = 0;
+							//u[0] = u[1] = u[2] = 0;
 						}
 #if 0
 						for (int k3row = 0; k3row < 3; k3row++) {
@@ -515,14 +517,20 @@ __global__ void gs_relaxation_otf_kernel(
 		u[0] = (gF[0][vid] - KeU[0] - Ks[0][1] * u[1] - Ks[0][2] * u[2]) / Ks[0][0];
 		u[1] = (gF[1][vid] - KeU[1] - Ks[1][0] * u[0] - Ks[1][2] * u[2]) / Ks[1][1];
 		u[2] = (gF[2][vid] - KeU[2] - Ks[2][0] * u[0] - Ks[2][1] * u[1]) / Ks[2][2];
-#else
+#elif 1
 		u[0] = w * (gF[0][vid] - KeU[0] - Ks[0][1] * u[1] - Ks[0][2] * u[2]) / Ks[0][0] + (1 - w) * u[0];
 		u[1] = w * (gF[1][vid] - KeU[1] - Ks[1][0] * u[0] - Ks[1][2] * u[2]) / Ks[1][1] + (1 - w) * u[1];
 		u[2] = w * (gF[2][vid] - KeU[2] - Ks[2][0] * u[0] - Ks[2][1] * u[1]) / Ks[2][2] + (1 - w) * u[2];
+#else
+		u[0] = (gF[0][vid] - KeU[0] - Ks[0][1] * u[1] - Ks[0][2] * u[2]) / Ks[0][0] + u[0];
+		u[1] = (gF[1][vid] - KeU[1] - Ks[1][0] * u[0] - Ks[1][2] * u[2]) / Ks[1][1] + u[1];
+		u[2] = (gF[2][vid] - KeU[2] - Ks[2][0] * u[0] - Ks[2][1] * u[1]) / Ks[2][2] + u[2];
 #endif
 
 		// if dirichlet boundary;
-		if (vflag.is_dirichlet_boundary()) { u[0] = u[1] = u[2] = 0; }
+		//if (DIRICHLET_STRENGTH >= 0) {
+			//if (vflag.is_dirichlet_boundary()) { u[0] = u[1] = u[2] = 0; }
+		//}
 		// update
 		gU[0][vid] = u[0];
 		gU[1][vid] = u[1];
@@ -823,21 +831,16 @@ __global__ void restrict_stencil_otf_kernel_1(
 				float ke[3][3];
 				for (short ir = 0; ir < 3; ir++)
 					for (short ic = 0; ic < 3; ic++) ke[ir][ic] = KE[kirow + ir][kjcol + ic] * rho_penal * wi;
-				if (kjDirichlet || kiDirichlet) {
-					//printf("\033[0mdiri boundary\n");
-					for (short ir = 0; ir < 3; ir++)
-						for (short ic = 0; ic < 3; ic++) ke[ir][ic] = 0;
-					if (ki == kj) {
-						//printf("diri diag\n");
+				if (DIRICHLET_STRENGTH >= 0) {
+					if (kjDirichlet || kiDirichlet) {
+						//printf("\033[0mdiri boundary\n");
 						for (short ir = 0; ir < 3; ir++)
-							ke[ir][ir] = DIRICHLET_STRENGTH;
-					}	
-				}
-				if (diag_strength) {
-					if (ki == kj) {
-						ke[0][0] += diag_strength;
-						ke[1][1] += diag_strength;
-						ke[2][2] += diag_strength;
+							for (short ic = 0; ic < 3; ic++) ke[ir][ic] = 0;
+						if (ki == kj) {
+							//printf("diri diag\n");
+							for (short ir = 0; ir < 3; ir++)
+								ke[ir][ir] = DIRICHLET_STRENGTH;
+						}
 					}
 				}
 				for (int vjcoarse = 0; vjcoarse < 8; vjcoarse++) {
@@ -1148,7 +1151,7 @@ __global__ void prolongate_correction_kernel_1(
 		}
 
 		if (isRoot && vflag.is_dirichlet_boundary()) {
-			u[0] = u[1] = u[2] = 0;
+			//u[0] = u[1] = u[2] = 0;
 		}
 		gU[0][tid] += u[0];
 		gU[1][tid] += u[1];
@@ -1156,7 +1159,7 @@ __global__ void prolongate_correction_kernel_1(
 	}
 }
 
-void homo::Grid::gs_relaxation(float w_SOR /*= 1.f*/)
+void homo::Grid::gs_relaxation(float w_SOR /*= 1.f*/, int times_ /*= 1*/)
 {
 	// change to 8 bytes bank
 	use8Bytesbank();
@@ -1169,27 +1172,31 @@ void homo::Grid::gs_relaxation(float w_SOR /*= 1.f*/)
 		gsVertexEnd[i] = gsVertexSetEnd[i];
 		if (i < 3) gridCellReso[i] = cellReso[i];
 	}
-	for (int i = 0; i < 8; i++) {
-		size_t grid_size, block_size;
-		int n_gs = gsVertexEnd[i] - (i == 0 ? 0 : gsVertexEnd[i - 1]);
-		if (assemb_otf) {
+	for (int itn = 0; itn < times_; itn++) {
+		for (int i = 0; i < 8; i++) {
+			int set_id = i;
+			size_t grid_size, block_size;
+			int n_gs = gsVertexEnd[set_id] - (set_id == 0 ? 0 : gsVertexEnd[set_id - 1]);
+			if (assemb_otf) {
 #if 0
-			make_kernel_param(&grid_size, &block_size, n_gs * 8, 32 * 8);
-			gs_relaxation_otf_kernel << <grid_size, block_size >> > (i, rho_g, gridCellReso, vertflag, cellflag, w_SOR, diag_strength);
+				make_kernel_param(&grid_size, &block_size, n_gs * 8, 32 * 8);
+				gs_relaxation_otf_kernel << <grid_size, block_size >> > (set_id, rho_g, gridCellReso, vertflag, cellflag, w_SOR, diag_strength);
 #elif 1
-			make_kernel_param(&grid_size, &block_size, n_gs * 8, 32 * 8);
-			gs_relaxation_otf_kernel_opt << <grid_size, block_size >> > (i, rho_g, gridCellReso, vertflag, cellflag, w_SOR);
+				make_kernel_param(&grid_size, &block_size, n_gs * 8, 32 * 8);
+				gs_relaxation_otf_kernel_opt << <grid_size, block_size >> > (set_id, rho_g, gridCellReso, vertflag, cellflag, w_SOR);
 #else
-			make_kernel_param(&grid_size, &block_size, n_gs * 16, 32 * 16);
-			gs_relaxation_otf_kernel_test_512 << <grid_size, block_size >> > (i, rho_g, gridCellReso, vertflag, cellflag, w_SOR, diag_strength);
+				make_kernel_param(&grid_size, &block_size, n_gs * 16, 32 * 16);
+				gs_relaxation_otf_kernel_test_512 << <grid_size, block_size >> > (set_id, rho_g, gridCellReso, vertflag, cellflag, w_SOR, diag_strength);
 #endif
-		} else {
-			make_kernel_param(&grid_size, &block_size, n_gs * 13, 32 * 13);
-			gs_relaxation_kernel << <grid_size, block_size >> > (i, vertflag, w_SOR);
+			}
+			else {
+				make_kernel_param(&grid_size, &block_size, n_gs * 13, 32 * 13);
+				gs_relaxation_kernel << <grid_size, block_size >> > (set_id, vertflag, w_SOR);
+			}
+			cudaDeviceSynchronize();
+			cuda_error_check;
+			enforce_period_boundary(u_g);
 		}
-		cudaDeviceSynchronize();
-		cuda_error_check;
-		enforce_period_boundary(u_g);
 	}
 	enforce_period_boundary(u_g);
 	//pad_vertex_data(u_g);
@@ -1233,6 +1240,8 @@ void homo::Grid::restrict_residual(void)
 	cudaDeviceSynchronize();
 	cuda_error_check;
 	pad_vertex_data(f_g);
+	// 
+	//enforce_dirichlet_boundary(f_g);
 }
 
 // map 32 vertices to 8 warp
@@ -1316,7 +1325,7 @@ __global__ void update_residual_otf_kernel_1(
 				if (!nvflag.is_fiction()) {
 					double u[3] = { gU[0][vneighId],gU[1][vneighId],gU[2][vneighId] };
 					if (nvflag.is_dirichlet_boundary()) {
-						u[0] = u[1] = u[2] = 0;
+						//u[0] = u[1] = u[2] = 0;
 					}
 #if 0
 					for (int k3row = 0; k3row < 3; k3row++) {
@@ -1386,7 +1395,7 @@ __global__ void update_residual_otf_kernel_1(
 			gF[1][vid] - KeU[1],
 			gF[2][vid] - KeU[2] };
 
-		if (vflag.is_dirichlet_boundary()) { r[0] = r[1] = r[2] = 0; }
+		//if (vflag.is_dirichlet_boundary()) { r[0] = r[1] = r[2] = 0; }
 
 		//if (debug) {
 		//	printf("sumKu = (%.4e, %.4e, %.4e)\n", KeU[0], KeU[1], KeU[2]);
@@ -3638,7 +3647,7 @@ __global__ void v3_stencilOnLeft_kernel(
 				if (!nvflag.is_fiction()) {
 					double u[3] = { v[0][vneighId],v[1][vneighId],v[2][vneighId] };
 					if (nvflag.is_dirichlet_boundary()) {
-						u[0] = u[1] = u[2] = 0;
+						//u[0] = u[1] = u[2] = 0;
 					}
 					for (int k3row = 0; k3row < 3; k3row++) {
 						for (int k3col = 0; k3col < 3; k3col++) {
@@ -3692,7 +3701,7 @@ __global__ void v3_stencilOnLeft_kernel(
 
 		double kv[3] = { KeU[0], KeU[1], KeU[2] };
 
-		if (vflag.is_dirichlet_boundary()) { kv[0] = kv[1] = kv[2] = 0; }
+		//if (vflag.is_dirichlet_boundary()) { kv[0] = kv[1] = kv[2] = 0; }
 
 		Kv[0][vid] = kv[0];
 		Kv[1][vid] = kv[1];
@@ -3764,9 +3773,11 @@ __global__ void v3_average_kernel(devArray_t<double*, 3> vlist, VertexFlags* vfl
 	int base = 0;
 	for (; base + tid < len; base += stride) {
 		int vid = base + tid;
-		VertexFlags vflag = vflags[vid];
-		if (firstReduce && vflag.is_fiction()) continue;
-		if (removePeriodDof && (vflag.is_max_boundary() || vflag.is_period_padding())) continue;
+		if (firstReduce) {
+			VertexFlags vflag = vflags[vid];
+			if (vflag.is_fiction()) continue;
+			if ((removePeriodDof && vflag.is_max_boundary()) || vflag.is_period_padding()) continue;
+		}
 		v[0] += vlist[0][vid]; v[1] += vlist[1][vid]; v[2] += vlist[2][vid];
 	}
 
@@ -3837,7 +3848,7 @@ void homo::Grid::v3_average(double* v[3], double vMean[3], bool removePeriodDof 
 	rest = grid_size;
 
 	while (rest > 1) {
-		make_kernel_param(&grid_size, &block_size, rest, 512);
+		make_kernel_param(&grid_size, &block_size, rest, 256);
 		if (le / 2 < grid_size) print_exception;
 		v3_average_kernel << <grid_size, block_size >> > (v3tmp, vertflag, rest, v3out, removePeriodDof, false);
 		cudaDeviceSynchronize();
@@ -3849,13 +3860,33 @@ void homo::Grid::v3_average(double* v[3], double vMean[3], bool removePeriodDof 
 
 	int nValid;
 	if (removePeriodDof) {
-		nValid = n_gscells();
+		nValid = cellReso[0] * cellReso[1] * cellReso[2];
 	} else {
-		nValid = (cellReso[0] + 3) * (cellReso[1] + 3) * (cellReso[2] + 3);
+		nValid = (cellReso[0] + 1) * (cellReso[1] + 1) * (cellReso[2] + 1);
 	}
 	for (int i = 0; i < 3; i++) {
 		vMean[i] /= nValid;
 	}
+	cuda_error_check;
+}
+
+__global__ void v3_const_kernel(int nv, VertexFlags* vflags, devArray_t<double*, 3> u, devArray_t<double, 3> t) {
+	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+	if (tid >= nv) return;
+	VertexFlags vflag = vflags[tid];
+	if (vflag.is_fiction()) return;
+
+	u[0][tid] = t[0]; u[1][tid] = t[1]; u[2][tid] = t[2];
+}
+
+void homo::Grid::v3_const(double* v[3], const double v_const[3]) {
+	devArray_t<double*, 3> uarr{ v[0], v[1], v[2] };
+	devArray_t<double, 3> tArr{ v_const[0],v_const[1],v_const[2] };
+	size_t grid_size, block_size;
+	make_kernel_param(&grid_size, &block_size, n_gsvertices(), 256);
+	int nv = n_gsvertices();
+	v3_const_kernel<<<grid_size,block_size>>>(nv, vertflag, uarr, tArr);
+	cudaDeviceSynchronize();
 	cuda_error_check;
 }
 

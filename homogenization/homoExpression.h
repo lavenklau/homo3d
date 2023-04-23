@@ -143,7 +143,7 @@ namespace homo {
 			}
 			ofs.close();
 		}
-		
+
 		const Scalar* data(void) {
 			return &C_[0][0];
 		}
