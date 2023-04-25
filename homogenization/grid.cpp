@@ -108,11 +108,11 @@ std::shared_ptr<Grid> Grid::coarse2(GridConfig config)
 			coarseGrid->upCoarse[i] = 0;
 			downCoarse[i] = 0;
 		}
-		else if (cellReso[i] >= 256) {
+		else if (cellReso[i] > config.max_coarse_reso) {
 			has_coarse = true;
 			//coarseGrid->upCoarse[i] = 2;
 			coarseGrid->upCoarse[i] = 2;
-			while (cellReso[i] / coarseGrid->upCoarse[i] >= 256) {
+			while (cellReso[i] / coarseGrid->upCoarse[i] > config.max_coarse_reso) {
 				coarseGrid->upCoarse[i] *= 2;
 			}
 			downCoarse[i] = coarseGrid->upCoarse[i];

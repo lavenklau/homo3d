@@ -23,6 +23,7 @@ DEFINE_double(filter, 2, "filter radius");
 DEFINE_double(step, 0.05, "design step for oc");
 DEFINE_double(damp, 0.5, "damp ratio for oc");
 DEFINE_double(relthres, 0.01, "relative residual threshold for FEM");
+DEFINE_int32(maxcoarsereso, 64, "maximal resolution of coarse grid");
 
 void cfg::HomoConfig::parse(int argc, char** argv)
 {
@@ -163,6 +164,9 @@ void cfg::HomoConfig::parse(int argc, char** argv)
 	// relative residual threshold
 	femRelThres = FLAGS_relthres;
 
+	// maximal allowed coarse resolution
+	maxCoarseReso = FLAGS_maxcoarsereso;
+
 	// print parsed configuration
 	printf("Configuration : \n");
 	printf(" = reso  - - - - - - - - - - - - - - - - - - - - - - - %d\n", FLAGS_reso);
@@ -185,5 +189,6 @@ void cfg::HomoConfig::parse(int argc, char** argv)
 	printf(" = dampRatio     - - - - - - - - - - - - - - - - - - - %4.2f\n", float(FLAGS_damp));
 	printf(" = designStep    - - - - - - - - - - - - - - - - - - - %4.2f\n", float(FLAGS_step));
 	printf(" = femRelThres   - - - - - - - - - - - - - - - - - - - %4.2e\n", float(FLAGS_relthres));
+	printf(" = maxCoarseReso - - - - - - - - - - - - - - - - - - - %d\n", FLAGS_maxcoarsereso);
 	printf(" = input(optional) - - - - - - - - - - - - - - - - - - %s\n", FLAGS_in.c_str());
 }

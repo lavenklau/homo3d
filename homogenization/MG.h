@@ -9,6 +9,7 @@ namespace homo {
 		int reso[3];
 		bool enableManagedMem = true;
 		std::string namePrefix;
+		int max_coarse_reso = 64;
 	};
 
 struct MG{

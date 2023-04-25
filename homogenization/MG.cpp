@@ -19,6 +19,7 @@ void homo::MG::build(MGConfig config)
 	GridConfig gcon;
 	gcon.enableManagedMem = config.enableManagedMem;
 	gcon.namePrefix = config.namePrefix;
+	gcon.max_coarse_reso = config.max_coarse_reso;
 
 	rootGrid->buildRoot(config.reso[0], config.reso[1], config.reso[2], gcon);
 

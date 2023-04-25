@@ -48,6 +48,7 @@ void homo::Homogenization::build(cfg::HomoConfig homconfig)
 	mgconf.namePrefix = getName();
 	std::copy(config.reso, config.reso + 3, mgconf.reso);
 	mgconf.enableManagedMem = config.useManagedMemory;
+	mgconf.max_coarse_reso = config.maxCoarseReso;
 	//mgconf.namePrefix;
 	mg_->build(mgconf);
 	grid = mg_->getRootGrid();

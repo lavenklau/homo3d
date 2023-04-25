@@ -93,6 +93,8 @@ enum SymmetryType {
 struct GridConfig {
 	bool enableManagedMem = true;
 	std::string namePrefix;
+	// maximal allowed resolution to store stencil explicitly
+	int max_coarse_reso = 64; 
 };
 
 struct Grid {

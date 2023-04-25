@@ -25,6 +25,7 @@ DECLARE_double(filter);
 DECLARE_double(step);
 DECLARE_double(damp);
 DECLARE_double(relthres);
+DECLARE_int32(maxcoarsereso);
 
 
 #define b2s(boolValue) (boolValue?"Yes":"No")
@@ -47,6 +48,7 @@ namespace cfg {
 		double designStep;
 		double dampRatio;
 		double femRelThres;
+		int maxCoarseReso;
 		std::string outprefix;
 		std::string testname;
 		std::string inputrho;
