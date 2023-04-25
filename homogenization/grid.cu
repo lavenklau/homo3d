@@ -1193,10 +1193,10 @@ void homo::Grid::gs_relaxation(float w_SOR /*= 1.f*/, int times_ /*= 1*/)
 			size_t grid_size, block_size;
 			int n_gs = gsVertexEnd[set_id] - (set_id == 0 ? 0 : gsVertexEnd[set_id - 1]);
 			if (assemb_otf) {
-#if 0
+#if 1
 				make_kernel_param(&grid_size, &block_size, n_gs * 8, 32 * 8);
 				gs_relaxation_otf_kernel << <grid_size, block_size >> > (set_id, rho_g, gridCellReso, vertflag, cellflag, w_SOR, diag_strength);
-#elif 1
+#elif 0
 				make_kernel_param(&grid_size, &block_size, n_gs * 8, 32 * 8);
 				gs_relaxation_otf_kernel_opt << <grid_size, block_size >> > (set_id, rho_g, gridCellReso, vertflag, cellflag, w_SOR);
 #else
@@ -1541,7 +1541,7 @@ void homo::Grid::update_residual(void)
 	if (assemb_otf) {
 		size_t grid_size, block_size;
 		make_kernel_param(&grid_size, &block_size, n_gsvertices() * 8, 32 * 8);
-#if 0
+#if 1
 		update_residual_otf_kernel_1 << <grid_size, block_size >> > (n_gsvertices(), rho_g, gridCellReso,
 			vflags, eflags, diag_strength);
 #else
