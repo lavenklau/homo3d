@@ -3,6 +3,7 @@
 #include "Eigen/IterativeLinearSolvers"
 #include "matlab/matlab_utils.h"
 #include "tictoc.h"
+#include "utils"
 
 std::shared_ptr<homo::Grid> homo::MG::getRootGrid(void)
 {
@@ -376,22 +377,24 @@ void homo::MG::test_v_cycle(void)
 	int itn = 0;
 
 #if 1
-	//grids[1]->stencil2matlab("K0", true);
-	//grids[2]->stencil2matlab("K1", true);
-	//grids[1]->restrictMatrix2matlab("R", *grids[2]);
-	std::vector<double> errhis;
+	std::vector<double> errhis[1];
+	std::vector<double> timehis[1];
 	double s_time = 0;
-	for (int itn = 0; itn < 200; itn++) {
+	for (int itn = 0; itn < 200; itn++)
+	{
 		_TIC("vc");
 		v_cycle();
 		_TOC;
 		grids[0]->update_residual();
 		double err = grids[0]->relative_residual();
-		errhis.push_back(err);
+		errhis->push_back(err);
 		printf("iter. %d   r = %e\n", itn, err);
 		s_time += tictoc::get_record("vc");
+		timehis->push_back(s_time);
 	}
-	array2ConnectedMatlab("errhis", errhis.data(), errhis.size());
+	array2ConnectedMatlab("errhis", errhis->data(), errhis->size());
+	homoutils::writeVectors(getPath("errhis"), errhis);
+	homoutils::writeVectors(getPath("timehis"), timehis);
 	printf("average time = %.2f\n", s_time / 200);
 	printf("=finished\n");
 #elif 0
