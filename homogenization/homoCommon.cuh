@@ -4,7 +4,6 @@
 #include "cuda_runtime.h"
 #include "cub/util_ptx.cuh"
 #include <cuda/std/tuple>
-#include <glm/glm.hpp>
 
 using namespace culib;
 
@@ -32,12 +31,10 @@ extern __constant__ float gKE[24][24];
 extern __constant__ double gKEd[24][24];
 extern __constant__ Lame gKLame[24][24];
 extern __constant__ double gLM[5];
-//extern __constant__ float* rxstencil[27][9];
-extern __constant__ glm::mat3* rxstencil[27];
-//extern __constant__ float* rxCoarseStencil[27][9];
-extern __constant__ glm::mat3* rxCoarseStencil[27];
-//extern __constant__ float* rxFineStencil[27][9];
-extern __constant__ glm::mat3* rxFineStencil[27];
+// USE_DOUBLE_STENCIL
+extern __constant__ double* rxstencil[27][9];
+extern __constant__ double* rxCoarseStencil[27][9];
+extern __constant__ double* rxFineStencil[27][9];
 
 extern __constant__ int gUpCoarse[3];
 extern __constant__ int gDownCoarse[3];
@@ -49,11 +46,8 @@ extern __constant__ int gGsVertexEnd[8];
 extern __constant__ int gGsCellEnd[8];
 extern __constant__ int gGsFineVertexReso[3][8];
 extern __constant__ int gGsCoarseVertexReso[3][8];
-extern __constant__ int gGsFineCellReso[3][8];
-extern __constant__ int gGsCoarseCellReso[3][8];
 extern __constant__ int gGsCoarseVertexEnd[8];
 extern __constant__ int gGsFineVertexEnd[8];
-extern __constant__ int gGsFineCellEnd[8];
 
 //__constant__ double* guchar[6][3];
 //__constant__ double* gfchar[6][3];
@@ -76,31 +70,6 @@ __device__ void loadTemplateMatrix(volatile T KE[24][24]) {
 		}
 		else if (std::is_same_v<T, double>) {
 			KE[ri][cj] = gKEd[ri][cj];
-		}
-		else {
-			print_exception;
-		}
-	}
-	__syncthreads();
-}
-
-template<typename T>
-__device__ void loadTemplateMatrix(/*volatile*/ glm::mat<3, 3, T> KE[8][8]) {
-	for (int i = threadIdx.x; i < 8 * 8; i += blockDim.x) {
-		int ri = i / 8;
-		int cj = i % 8;
-		if (std::is_same_v<T, float>) {
-			for (int r = 0; r < 3; r++) {
-				for (int c = 0; c < 3; c++) {
-					KE[ri][cj][c][r] = gKE[ri * 3 + r][cj * 3 + c];
-				}
-			}
-		} else if (std::is_same_v<T, double>) {
-			for (int r = 0; r < 3; r++) {
-				for (int c = 0; c < 3; c++) {
-					KE[ri][cj][c][r] = gKEd[ri * 3 + r][cj * 3 + c];
-				}
-			}
 		}
 		else {
 			print_exception;

@@ -132,18 +132,7 @@ namespace homo {
 			ofs.write((const char*)(&C_[0][0]), sizeof(C_));
 			ofs.close();
 		}
-
-		void writeToTxt(const std::string& filename) {
-			std::ofstream ofs(filename);
-			for (int i = 0; i < 6; i++) {
-				for (int j = 0; j < 6; j++) {
-					ofs << C_[i][j] << "  ";
-				}
-				ofs << "\n";
-			}
-			ofs.close();
-		}
-
+		
 		const Scalar* data(void) {
 			return &C_[0][0];
 		}

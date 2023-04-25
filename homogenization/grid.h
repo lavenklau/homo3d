@@ -13,7 +13,6 @@
 #include <iostream>
 #include <stdint.h>
 #include "gmem/DeviceBuffer.h"
-#include "glm/glm.hpp"
 #include <Eigen/Sparse>
 #include <Eigen/IterativeLinearSolvers>
 
@@ -93,8 +92,6 @@ enum SymmetryType {
 struct GridConfig {
 	bool enableManagedMem = true;
 	std::string namePrefix;
-	// maximal allowed resolution to store stencil explicitly
-	int max_coarse_reso = 64; 
 };
 
 struct Grid {
@@ -119,8 +116,7 @@ struct Grid {
 
 	std::array<int, 3> cellReso;
 
-	//float* stencil_g[27][9];
-	glm::mat3* stencil_g[27];
+	double* stencil_g[27][9];
 
 	double* u_g[3];
 	double* f_g[3];
@@ -363,6 +359,7 @@ struct Grid {
 	//  lexico order with no padding to period padded GS order 
 	enum LexiType { VERTEX, CELL };
 	void lexi2gsorder(float* src, float* dst, LexiType type_, bool lexipadded = false);
+	void lexi2gsorder(double* src, double* dst, LexiType type_, bool lexipadded = false);
 	void lexiStencil2gsorder(void);
 	void enforce_period_stencil(bool additive);
 	//void gather_boundary_force(double* f[3]);
@@ -371,10 +368,8 @@ struct Grid {
 	void enforce_dirichlet_stencil(void);
 	void enforce_period_vertex(double* v[3], bool additive = false);
 	void enforce_period_vertex(float* v[3], bool additive = false);
-	void enforce_period_vertex(glm::mat3* v, bool additive = false);
 	void pad_vertex_data(double* v[3]);
 	void pad_vertex_data(float* v[3]);
-	void pad_vertex_data(glm::mat3* v);
 	void pad_cell_data(float* e);
 	void enforce_period_element(float* data);
 

@@ -148,8 +148,10 @@ void testHomogenization(cfg::HomoConfig config) {
 		Homogenization hom(config);
 		//hom.getGrid()->readDensity(config.inputrho, VoxelIOFormat::openVDB);
 		hom.getGrid()->randDensity();
+		//hom.getGrid()->readDensity("temp.vdb", VoxelIOFormat::openVDB);
+		//hom.getGrid()->reset_density(0.5);
 		hom.mg_->updateStencils();
-		hom.getGrid()->useFchar(4);
+		hom.getGrid()->useFchar(1);
 		hom.mg_->test_v_cycle();
 	}
 	else if (config.testname == "testgs") {
