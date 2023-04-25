@@ -384,7 +384,7 @@ void homo::MG::test_v_cycle(void)
 	std::vector<double> errhis[1];
 	std::vector<double> timehis[1];
 	double s_time = 0;
-	for (int itn = 0; itn < 200; itn++) {
+	for (int itn = 0; itn < 80; itn++) {
 		_TIC("vc");
 		v_cycle();
 		_TOC;

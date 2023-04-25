@@ -92,6 +92,7 @@ enum SymmetryType {
 struct GridConfig {
 	bool enableManagedMem = true;
 	std::string namePrefix;
+	int max_coarse_reso;
 };
 
 struct Grid {
@@ -145,7 +146,7 @@ struct Grid {
 	std::map<std::string, std::any> cellTraits;
 	std::map<std::string, std::any> vertexTraits;
 
-	Eigen::BiCGSTAB<Eigen::SparseMatrix<double>, Eigen::IncompleteLUT<double>> hostBiCGSolver;
+	Eigen::BiCGSTAB<Eigen::SparseMatrix<double>, Eigen::IncompleteCholesky<double>> hostBiCGSolver;
 	Eigen::SparseMatrix<double> Khost;
 	//Eigen::SparseQR<decltype(Khost),Eigen::AMDOrderin>
 

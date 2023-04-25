@@ -464,7 +464,7 @@ void homo::Grid::assembleHostMatrix(void)
 		bhost = bhost - transBase * (transBase.transpose() * bhost);
 		Eigen::VectorXd x = hostBiCGSolver.solve(bhost);
 		if (hostBiCGSolver.info() != Eigen::Success) {
-			printf("\033[31mSolver test failed, err = %d\033[0m\n", int(hostBiCGSolver.info()));
+			printf("\033[31mSolver test failed, code = %d\033[0m, err = %e\n", int(hostBiCGSolver.info()),hostBiCGSolver.error());
 		}
 	}
 }
