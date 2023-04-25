@@ -33,9 +33,12 @@ __constant__ double gKEd[24][24];
 __constant__ Lame gKLame[24][24];
 __constant__ float gKELame[24][24];
 __constant__ float gKEMu[24][24];
-__constant__ float* rxstencil[27][9];
-__constant__ float* rxCoarseStencil[27][9];
-__constant__ float* rxFineStencil[27][9];
+//__constant__ float* rxstencil[27][9];
+__constant__ glm::mat3* rxstencil[27];
+//__constant__ float* rxCoarseStencil[27][9];
+__constant__ glm::mat3* rxCoarseStencil[27];
+//__constant__ float* rxFineStencil[27][9];
+__constant__ glm::mat3* rxFineStencil[27];
 __constant__ double gLM[5];
 
 __constant__ int gUpCoarse[3];
@@ -48,8 +51,11 @@ __constant__ int gGsVertexEnd[8];
 __constant__ int gGsCellEnd[8];
 __constant__ int gGsFineVertexReso[3][8];
 __constant__ int gGsCoarseVertexReso[3][8];
+__constant__ int gGsFineCellReso[3][8];
+__constant__ int gGsCoarseCellReso[3][8];
 __constant__ int gGsCoarseVertexEnd[8];
 __constant__ int gGsFineVertexEnd[8];
+__constant__ int gGsFineCellEnd[8];
 
 //__constant__ double* guchar[6][3];
 //__constant__ double* gfchar[6][3];
@@ -71,6 +77,16 @@ extern __global__ void update_residual_otf_kernel_opt(
 	devArray_t<int, 3> gridCellReso,
 	VertexFlags* vflags, CellFlags* eflags,
 	float diag_strength
+);
+
+extern __global__ void restrict_stencil_otf_aos_kernel_1(
+	int ne, float* rholist, CellFlags* eflags, VertexFlags* vflags
+);
+
+extern __global__ void restrict_stencil_aos_kernel_1(
+	int nv_coarse, int nv_fine,
+	VertexFlags* vflags,
+	VertexFlags* vfineflags
 );
 
 __device__ void gsid2pos(int gsid, int color, int gsreso[3][8], int gsend[8], int pos[3]) {
@@ -95,8 +111,9 @@ void homo::Grid::useGrid_g(void)
 		cudaMemcpyToSymbol(rxFineStencil, fine->stencil_g, sizeof(rxFineStencil));
 		cudaMemcpyToSymbol(gUpCoarse, upCoarse.data(), sizeof(gUpCoarse));
 		cudaMemcpyToSymbol(gGsFineVertexEnd, fine->gsVertexSetEnd, sizeof(gGsFineVertexEnd));
+		cudaMemcpyToSymbol(gGsFineCellEnd, fine->gsCellSetEnd, sizeof(gGsFineCellEnd));
 		cudaMemcpyToSymbol(gGsFineVertexReso, fine->gsVertexReso, sizeof(gGsFineVertexReso));
-		
+		cudaMemcpyToSymbol(gGsFineCellReso, fine->gsCellReso, sizeof(gGsFineCellReso));
 	}
 	if (Coarse != nullptr) {
 		cudaMemcpyToSymbol(gUcoarse, Coarse->u_g, sizeof(gUcoarse));
@@ -108,6 +125,7 @@ void homo::Grid::useGrid_g(void)
 		cudaMemcpyToSymbol(gGsCoarseVertexEnd, Coarse->gsVertexSetEnd, sizeof(gGsCoarseVertexEnd));
 		cudaMemcpyToSymbol(gGsCoarseVertexReso, Coarse->gsVertexReso, sizeof(gGsCoarseVertexReso));
 		cudaMemcpyToSymbol(gCoarseGridCellReso, Coarse->cellReso.data(), sizeof(gCoarseGridCellReso));
+		cudaMemcpyToSymbol(gGsCoarseCellReso, Coarse->gsCellReso, sizeof(gGsCoarseCellReso));
 	}
 	cudaMemcpyToSymbol(rxstencil, stencil_g, sizeof(rxstencil));
 	cudaMemcpyToSymbol(gGridCellReso, cellReso.data(), sizeof(gGridCellReso));
@@ -574,7 +592,7 @@ __global__ void gs_relaxation_kernel(
 
 	GridVertexIndex indexer(gGridCellReso[0], gGridCellReso[1], gGridCellReso[2]);
 
-	double Au[3] = { 0. };
+	glm::vec<3, double> Au(0.);
 
 	if (!fiction && !vflag.is_period_padding()) {
 		indexer.locate(vid, vflag.get_gscolor(), gsVertexEnd);
@@ -585,13 +603,8 @@ __global__ void gs_relaxation_kernel(
 			if (neighId == -1) continue;
 			VertexFlags neiflag = vflags[neighId];
 			if (!neiflag.is_fiction()) {
-				double u[3] = { gU[0][neighId],gU[1][neighId],gU[2][neighId] };
-
-				for (int j = 0; j < 3; j++) {
-					for (int k = 0; k < 3; k++) {
-						Au[j] += rxstencil[vneigh][j * 3 + k][vid] * u[k];
-					}
-				}
+				glm::vec<3, double> u(gU[0][neighId], gU[1][neighId], gU[2][neighId]);
+				Au += rxstencil[vneigh][vid] * u;
 			}
 		}
 	}
@@ -643,14 +656,15 @@ __global__ void gs_relaxation_kernel(
 
 		if (!vflag.is_period_padding()) {
 			double u[3] = { gU[0][vid], gU[1][vid], gU[2][vid] };
+			glm::mat3 st = rxstencil[13][vid];
 #if !USING_SOR
-			u[0] = (gF[0][vid] - Au[0] - rxstencil[13][1][vid] * u[1] - rxstencil[13][2][vid] * u[2]) / rxstencil[13][0][vid];
-			u[1] = (gF[1][vid] - Au[1] - rxstencil[13][3][vid] * u[0] - rxstencil[13][5][vid] * u[2]) / rxstencil[13][4][vid];
-			u[2] = (gF[2][vid] - Au[2] - rxstencil[13][6][vid] * u[0] - rxstencil[13][7][vid] * u[1]) / rxstencil[13][8][vid];
+			u[0] = (gF[0][vid] - Au[0] - st[1][0] * u[1] - st[2][0] * u[2]) / st[0][0];
+			u[1] = (gF[1][vid] - Au[1] - st[0][1] * u[0] - st[2][1] * u[2]) / st[1][1];
+			u[2] = (gF[2][vid] - Au[2] - st[0][2] * u[0] - st[1][2] * u[1]) / st[2][2];
 #else
-			u[0] = w * (gF[0][vid] - Au[0] - rxstencil[13][1][vid] * u[1] - rxstencil[13][2][vid] * u[2]) / rxstencil[13][0][vid] + (1 - w) * u[0];
-			u[1] = w * (gF[1][vid] - Au[1] - rxstencil[13][3][vid] * u[0] - rxstencil[13][5][vid] * u[2]) / rxstencil[13][4][vid] + (1 - w) * u[1];
-			u[2] = w * (gF[2][vid] - Au[2] - rxstencil[13][6][vid] * u[0] - rxstencil[13][7][vid] * u[1]) / rxstencil[13][8][vid] + (1 - w) * u[2];
+			u[0] = w * (gF[0][vid] - Au[0] - st[1][0] * u[1] - st[2][0] * u[2]) / st[0][0] + (1 - w) * u[0];
+			u[1] = w * (gF[1][vid] - Au[1] - st[0][1] * u[0] - st[2][1] * u[2]) / st[1][1] + (1 - w) * u[1];
+			u[2] = w * (gF[2][vid] - Au[2] - st[0][2] * u[0] - st[1][2] * u[1]) / st[2][2] + (1 - w) * u[2];
 #endif
 
 			//if (rxstencil[13][0][vid] == 0) {
@@ -669,222 +683,222 @@ __global__ void gs_relaxation_kernel(
 
 // scatter per fine element matrix to coarse stencil, one thread for one element 
 // stencil was organized in lexico order(No padding), and should be transferred to gs order
-template<int BlockSize = 256>
-__global__ void restrict_stencil_otf_kernel_1(
-	int ne, float* rholist, CellFlags* eflags, VertexFlags* vflags,
-	float diag_strength
-	//devArray_t<int, 8> gsCellEnd, devArray_t<int, 3> CoarseCellReso
-) {
-
-	__shared__ float KE[24][24];
-	__shared__ int coarseReso[3];
-
-	if (threadIdx.x < 3) {
-		coarseReso[threadIdx.x] = gCoarseGridCellReso[threadIdx.x];
-	}
-
-	loadTemplateMatrix(KE);
-
-	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
-	bool fiction = false;
-
-	CellFlags eflag;
-
-	if (tid < ne) {
-		eflag = eflags[tid];
-		fiction = fiction || eflag.is_fiction() || eflag.is_period_padding();
-	} else {
-		fiction = true;
-	}
-
-	bool dirichCell = eflag.is_dirichlet_boundary();
-
-	int gscolor = eflag.get_gscolor();
-
-	int gsbase = gscolor == 0 ? 0 : gGsCellEnd[gscolor - 1];
-
-	// local id
-	int esetid = tid - gsbase;
-
-	if (esetid >= gGsCellEnd[gscolor] && !fiction) { print_exception; }
-
-	if (tid == 0) {
-		//printf("[%d]\n", tid);
-		//printf("%d %d %d %d %d %d %d %d\n",
-		//	gGsCellEnd[0], gGsCellEnd[1], gGsCellEnd[2], gGsCellEnd[3],
-		//	gGsCellEnd[4], gGsCellEnd[5], gGsCellEnd[6], gGsCellEnd[7]);
-	}
-	// element position
-#if 1
-	short3 cellPos{
-		esetid % gGsCellReso[0][gscolor] * 2 + gscolor % 2 - 1,
-		esetid / gGsCellReso[0][gscolor] % gGsCellReso[1][gscolor] * 2 + gscolor / 2 % 2 - 1,
-		esetid / (gGsCellReso[0][gscolor] * gGsCellReso[1][gscolor]) * 2 + gscolor / 4 - 1
-	};
-
-	
-	VertexFlags elementVflag[8];
-	if (!fiction) {
-		int minvid = lexi2gs(cellPos, gGsVertexReso, gGsVertexEnd);
-		for (int i = 0; i < 8; i++) {
-			short3 npos{ cellPos.x + i % 2,cellPos.y + i / 2 % 2, cellPos.z + i / 4 };
-			elementVflag[i] = vflags[lexi2gs(npos, gGsVertexReso, gGsVertexEnd)];
-		}
-	}
-
-	short3 downCoarse{ gDownCoarse[0],gDownCoarse[1],gDownCoarse[2] };
-
-	short3 coarseCellPos{
-		cellPos.x / downCoarse.x,
-		cellPos.y / downCoarse.y,
-		cellPos.z / downCoarse.z,
-	};
-
-	short3 remCellPos{
-		cellPos.x % downCoarse.x,
-		cellPos.y % downCoarse.y,
-		cellPos.z % downCoarse.z,
-	};
-
-	float rho_penal = 0.f;
-
-	if (!fiction) {
-		rho_penal = powf(rholist[tid], exp_penal[0]);
-	}
-
-	// typical error
-	//{
-	//	int pass = 0;
-	//	int id = pass + threadIdx.x;
-	//	while (id < 24 * 24) {
-	//		int row = id / 24;
-	//		int col = id % 24;
-	//		KE[row][col] *= rho_penal;
-	//		pass += blockDim.x;
-	//		id += blockDim.x;
-	//	}
-	//	__syncthreads();
-	//}
-
-	//{
-	//	int nbase = 0;
-	//	while (nbase < 24 * 24) {
-	//		int id = nbase + threadIdx.x;
-	//		if (id < 24 * 24) {
-	//			if (KE[id / 24][id % 24] == 0) {
-	//				print_exception;
-	//			}
-	//		}
-	//		nbase += blockDim.x;
-	//	}
-	//	__syncthreads();
-	//}
-
-	//printf("[%d] rho_p = %f\n", int(tid), rho_penal);
-
-	if (rho_penal == 0.f) return;
-
-	float den = downCoarse.x * downCoarse.y * downCoarse.z;
-	for (int vicoarse = 0; vicoarse < 8; vicoarse++) {
-		short3 vicoarseRem{ vicoarse % 2, vicoarse / 2 % 2, vicoarse / 4 };
-		// vcoarseid in lexico order without padding
-		short3 vicoarsepos{ coarseCellPos.x + vicoarseRem.x, coarseCellPos.y + vicoarseRem.y, coarseCellPos.z + vicoarseRem.z };
-		int vcoarseId = vicoarsepos.x + vicoarsepos.y * (coarseReso[0] + 1) +
-			vicoarsepos.z * (coarseReso[0] + 1) * (coarseReso[1] + 1);
-
-		//bool debug = (vicoarsepos.x == 17 && vicoarsepos.y == 17 && vicoarsepos.z == 16) ||
-		//	(vicoarsepos.x == 17 && vicoarsepos.y == 20 && vicoarsepos.z == 16);
-		//debug = debug && (vicoarse == 2) && (remCellPos.x == 0 && remCellPos.y == 0 && remCellPos.z == 0);
-
-		float st[8][9] = { 0.f };
-		//double st[8][9] = { 0.f };
-		short3 vipos{ vicoarse % 2 * downCoarse.x, vicoarse / 2 % 2 * downCoarse.y, vicoarse / 4 * downCoarse.z };
-		for (int ki = 0; ki < 8; ki++) {
-			int kirow = ki * 3;
-			short3 kipos{ remCellPos.x + ki % 2 , remCellPos.y + ki / 2 % 2, remCellPos.z + ki / 4 };
-			// todo : use intrinsic __usad 
-			float wi =
-				((downCoarse.x - abs(kipos.x - vipos.x)) *
-					(downCoarse.y - abs(kipos.y - vipos.y)) *
-					(downCoarse.z - abs(kipos.z - vipos.z))) / den;
-
-			//if (wi < -0.01f) print_exception;
-
-			bool kiDirichlet = elementVflag[ki].is_dirichlet_boundary();
-
-			//if (kiDirichlet)  continue;
-
-			if (wi == 0.) continue;
-
-			//if (dirichCell && ki == 0) continue;
-			
-
-			for (int kj = 0; kj < 8; kj++) {
-
-				bool kjDirichlet = elementVflag[kj].is_dirichlet_boundary();
-
-				//if (kjDirichlet) continue;
-				//if (dirichCell && kj== 0) continue;
-
-				int kjcol = kj * 3;
-				short3 kjpos{ remCellPos.x + kj % 2, remCellPos.y + kj / 2 % 2, remCellPos.z + kj / 4 };
-				float ke[3][3];
-				for (short ir = 0; ir < 3; ir++)
-					for (short ic = 0; ic < 3; ic++) ke[ir][ic] = KE[kirow + ir][kjcol + ic] * rho_penal * wi;
-				if (DIRICHLET_STRENGTH >= 0) {
-					if (kjDirichlet || kiDirichlet) {
-						//printf("\033[0mdiri boundary\n");
-						for (short ir = 0; ir < 3; ir++)
-							for (short ic = 0; ic < 3; ic++) ke[ir][ic] = 0;
-						if (ki == kj) {
-							//printf("diri diag\n");
-							for (short ir = 0; ir < 3; ir++)
-								ke[ir][ir] = DIRICHLET_STRENGTH;
-						}
-					}
-				}
-				for (int vjcoarse = 0; vjcoarse < 8; vjcoarse++) {
-					short3 vjpos = { vjcoarse % 2 * downCoarse.x, vjcoarse / 2 % 2 * downCoarse.y, vjcoarse / 4 * downCoarse.z };
-					// todo : use intrinsic __usad 
-					float wj =
-						((downCoarse.x - abs(kjpos.x - vjpos.x)) *
-							(downCoarse.y - abs(kjpos.y - vjpos.y)) *
-							(downCoarse.z - abs(kjpos.z - vjpos.z))) / den;
-					//if (wj < -0.01f) {
-					//	printf("tid = %d, epos = (%ld, %ld, %ld), remcell = (%ld, %ld, %ld)  eflag = %04x\n",
-					//		(int)(tid), cellPos.x, cellPos.y, cellPos.z, remCellPos.x, remCellPos.y, remCellPos.z, eflag.flagbits);
-					//	//printf("wj = %e, kjpos = (%ld, %ld, %ld), vjpos = (%ld, %ld, %ld) \n",
-					//	//	wj, kjpos.x, kjpos.y, kjpos.z, vjpos.x, vjpos.y, vjpos.z);
-					//}
-					for (int i = 0; i < 9; i++) {
-						st[vjcoarse][i] += wj * ke[i / 3][i % 3];
-					}
-					//if (debug && vjcoarse == vicoarse) {
-					//	printf("y%ld ;cid = %d;vi = %d ;ki = %d; wi = %f; kj = %d; wj = %f;st3 = %e;ke = %e;rh = %4.2lf\n",
-					//		vicoarsepos.y, vcoarseId, vicoarse, ki, wi, kj, wj, st[vicoarse][8], KE[kirow + 2][kjcol + 2], rho_penal);
-					//}
-				}
-			}
-		}
-
-
-		//if (debug) {
-		//	printf("y%ld ;cid = %d;vi = %d ;st3 = (%e, %e, %e); re = (%ld, %ld, %ld)\n",
-		//		vicoarsepos.y, vcoarseId, vicoarse, st[vicoarse][0], st[vicoarse][4], st[vicoarse][8],
-		//		remCellPos.x, remCellPos.y, remCellPos.z);
-		//}
-
-		for (int i = 0; i < 8; i++) {
-			short3 relpos = { i % 2 - vicoarseRem.x + 1, i / 2 % 2 - vicoarseRem.y + 1, i / 4 - vicoarseRem.z + 1 };
-			int relid = relpos.x + relpos.y * 3 + relpos.z * 9;
-			if (relid >= 27) { print_exception; }
-			for (int j = 0; j < 9; j++) {
-				atomicAdd(&rxCoarseStencil[relid][j][vcoarseId], st[i][j]);
-			}
-		}
-	}
-#endif
-}
+//template<int BlockSize = 256>
+//__global__ void restrict_stencil_otf_kernel_1(
+//	int ne, float* rholist, CellFlags* eflags, VertexFlags* vflags,
+//	float diag_strength
+//	//devArray_t<int, 8> gsCellEnd, devArray_t<int, 3> CoarseCellReso
+//) {
+//
+//	__shared__ float KE[24][24];
+//	__shared__ int coarseReso[3];
+//
+//	if (threadIdx.x < 3) {
+//		coarseReso[threadIdx.x] = gCoarseGridCellReso[threadIdx.x];
+//	}
+//
+//	loadTemplateMatrix(KE);
+//
+//	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+//	bool fiction = false;
+//
+//	CellFlags eflag;
+//
+//	if (tid < ne) {
+//		eflag = eflags[tid];
+//		fiction = fiction || eflag.is_fiction() || eflag.is_period_padding();
+//	} else {
+//		fiction = true;
+//	}
+//
+//	bool dirichCell = eflag.is_dirichlet_boundary();
+//
+//	int gscolor = eflag.get_gscolor();
+//
+//	int gsbase = gscolor == 0 ? 0 : gGsCellEnd[gscolor - 1];
+//
+//	// local id
+//	int esetid = tid - gsbase;
+//
+//	if (esetid >= gGsCellEnd[gscolor] && !fiction) { print_exception; }
+//
+//	if (tid == 0) {
+//		//printf("[%d]\n", tid);
+//		//printf("%d %d %d %d %d %d %d %d\n",
+//		//	gGsCellEnd[0], gGsCellEnd[1], gGsCellEnd[2], gGsCellEnd[3],
+//		//	gGsCellEnd[4], gGsCellEnd[5], gGsCellEnd[6], gGsCellEnd[7]);
+//	}
+//	// element position
+//#if 1
+//	short3 cellPos{
+//		esetid % gGsCellReso[0][gscolor] * 2 + gscolor % 2 - 1,
+//		esetid / gGsCellReso[0][gscolor] % gGsCellReso[1][gscolor] * 2 + gscolor / 2 % 2 - 1,
+//		esetid / (gGsCellReso[0][gscolor] * gGsCellReso[1][gscolor]) * 2 + gscolor / 4 - 1
+//	};
+//
+//	
+//	VertexFlags elementVflag[8];
+//	if (!fiction) {
+//		int minvid = lexi2gs(cellPos, gGsVertexReso, gGsVertexEnd);
+//		for (int i = 0; i < 8; i++) {
+//			short3 npos{ cellPos.x + i % 2,cellPos.y + i / 2 % 2, cellPos.z + i / 4 };
+//			elementVflag[i] = vflags[lexi2gs(npos, gGsVertexReso, gGsVertexEnd)];
+//		}
+//	}
+//
+//	short3 downCoarse{ gDownCoarse[0],gDownCoarse[1],gDownCoarse[2] };
+//
+//	short3 coarseCellPos{
+//		cellPos.x / downCoarse.x,
+//		cellPos.y / downCoarse.y,
+//		cellPos.z / downCoarse.z,
+//	};
+//
+//	short3 remCellPos{
+//		cellPos.x % downCoarse.x,
+//		cellPos.y % downCoarse.y,
+//		cellPos.z % downCoarse.z,
+//	};
+//
+//	float rho_penal = 0.f;
+//
+//	if (!fiction) {
+//		rho_penal = powf(rholist[tid], exp_penal[0]);
+//	}
+//
+//	// typical error
+//	//{
+//	//	int pass = 0;
+//	//	int id = pass + threadIdx.x;
+//	//	while (id < 24 * 24) {
+//	//		int row = id / 24;
+//	//		int col = id % 24;
+//	//		KE[row][col] *= rho_penal;
+//	//		pass += blockDim.x;
+//	//		id += blockDim.x;
+//	//	}
+//	//	__syncthreads();
+//	//}
+//
+//	//{
+//	//	int nbase = 0;
+//	//	while (nbase < 24 * 24) {
+//	//		int id = nbase + threadIdx.x;
+//	//		if (id < 24 * 24) {
+//	//			if (KE[id / 24][id % 24] == 0) {
+//	//				print_exception;
+//	//			}
+//	//		}
+//	//		nbase += blockDim.x;
+//	//	}
+//	//	__syncthreads();
+//	//}
+//
+//	//printf("[%d] rho_p = %f\n", int(tid), rho_penal);
+//
+//	if (rho_penal == 0.f) return;
+//
+//	float den = downCoarse.x * downCoarse.y * downCoarse.z;
+//	for (int vicoarse = 0; vicoarse < 8; vicoarse++) {
+//		short3 vicoarseRem{ vicoarse % 2, vicoarse / 2 % 2, vicoarse / 4 };
+//		// vcoarseid in lexico order without padding
+//		short3 vicoarsepos{ coarseCellPos.x + vicoarseRem.x, coarseCellPos.y + vicoarseRem.y, coarseCellPos.z + vicoarseRem.z };
+//		int vcoarseId = vicoarsepos.x + vicoarsepos.y * (coarseReso[0] + 1) +
+//			vicoarsepos.z * (coarseReso[0] + 1) * (coarseReso[1] + 1);
+//
+//		//bool debug = (vicoarsepos.x == 17 && vicoarsepos.y == 17 && vicoarsepos.z == 16) ||
+//		//	(vicoarsepos.x == 17 && vicoarsepos.y == 20 && vicoarsepos.z == 16);
+//		//debug = debug && (vicoarse == 2) && (remCellPos.x == 0 && remCellPos.y == 0 && remCellPos.z == 0);
+//
+//		float st[8][9] = { 0.f };
+//		//double st[8][9] = { 0.f };
+//		short3 vipos{ vicoarse % 2 * downCoarse.x, vicoarse / 2 % 2 * downCoarse.y, vicoarse / 4 * downCoarse.z };
+//		for (int ki = 0; ki < 8; ki++) {
+//			int kirow = ki * 3;
+//			short3 kipos{ remCellPos.x + ki % 2 , remCellPos.y + ki / 2 % 2, remCellPos.z + ki / 4 };
+//			// todo : use intrinsic __usad 
+//			float wi =
+//				((downCoarse.x - abs(kipos.x - vipos.x)) *
+//					(downCoarse.y - abs(kipos.y - vipos.y)) *
+//					(downCoarse.z - abs(kipos.z - vipos.z))) / den;
+//
+//			//if (wi < -0.01f) print_exception;
+//
+//			bool kiDirichlet = elementVflag[ki].is_dirichlet_boundary();
+//
+//			//if (kiDirichlet)  continue;
+//
+//			if (wi == 0.) continue;
+//
+//			//if (dirichCell && ki == 0) continue;
+//			
+//
+//			for (int kj = 0; kj < 8; kj++) {
+//
+//				bool kjDirichlet = elementVflag[kj].is_dirichlet_boundary();
+//
+//				//if (kjDirichlet) continue;
+//				//if (dirichCell && kj== 0) continue;
+//
+//				int kjcol = kj * 3;
+//				short3 kjpos{ remCellPos.x + kj % 2, remCellPos.y + kj / 2 % 2, remCellPos.z + kj / 4 };
+//				float ke[3][3];
+//				for (short ir = 0; ir < 3; ir++)
+//					for (short ic = 0; ic < 3; ic++) ke[ir][ic] = KE[kirow + ir][kjcol + ic] * rho_penal * wi;
+//				if (DIRICHLET_STRENGTH >= 0) {
+//					if (kjDirichlet || kiDirichlet) {
+//						//printf("\033[0mdiri boundary\n");
+//						for (short ir = 0; ir < 3; ir++)
+//							for (short ic = 0; ic < 3; ic++) ke[ir][ic] = 0;
+//						if (ki == kj) {
+//							//printf("diri diag\n");
+//							for (short ir = 0; ir < 3; ir++)
+//								ke[ir][ir] = DIRICHLET_STRENGTH;
+//						}
+//					}
+//				}
+//				for (int vjcoarse = 0; vjcoarse < 8; vjcoarse++) {
+//					short3 vjpos = { vjcoarse % 2 * downCoarse.x, vjcoarse / 2 % 2 * downCoarse.y, vjcoarse / 4 * downCoarse.z };
+//					// todo : use intrinsic __usad 
+//					float wj =
+//						((downCoarse.x - abs(kjpos.x - vjpos.x)) *
+//							(downCoarse.y - abs(kjpos.y - vjpos.y)) *
+//							(downCoarse.z - abs(kjpos.z - vjpos.z))) / den;
+//					//if (wj < -0.01f) {
+//					//	printf("tid = %d, epos = (%ld, %ld, %ld), remcell = (%ld, %ld, %ld)  eflag = %04x\n",
+//					//		(int)(tid), cellPos.x, cellPos.y, cellPos.z, remCellPos.x, remCellPos.y, remCellPos.z, eflag.flagbits);
+//					//	//printf("wj = %e, kjpos = (%ld, %ld, %ld), vjpos = (%ld, %ld, %ld) \n",
+//					//	//	wj, kjpos.x, kjpos.y, kjpos.z, vjpos.x, vjpos.y, vjpos.z);
+//					//}
+//					for (int i = 0; i < 9; i++) {
+//						st[vjcoarse][i] += wj * ke[i / 3][i % 3];
+//					}
+//					//if (debug && vjcoarse == vicoarse) {
+//					//	printf("y%ld ;cid = %d;vi = %d ;ki = %d; wi = %f; kj = %d; wj = %f;st3 = %e;ke = %e;rh = %4.2lf\n",
+//					//		vicoarsepos.y, vcoarseId, vicoarse, ki, wi, kj, wj, st[vicoarse][8], KE[kirow + 2][kjcol + 2], rho_penal);
+//					//}
+//				}
+//			}
+//		}
+//
+//
+//		//if (debug) {
+//		//	printf("y%ld ;cid = %d;vi = %d ;st3 = (%e, %e, %e); re = (%ld, %ld, %ld)\n",
+//		//		vicoarsepos.y, vcoarseId, vicoarse, st[vicoarse][0], st[vicoarse][4], st[vicoarse][8],
+//		//		remCellPos.x, remCellPos.y, remCellPos.z);
+//		//}
+//
+//		for (int i = 0; i < 8; i++) {
+//			short3 relpos = { i % 2 - vicoarseRem.x + 1, i / 2 % 2 - vicoarseRem.y + 1, i / 4 - vicoarseRem.z + 1 };
+//			int relid = relpos.x + relpos.y * 3 + relpos.z * 9;
+//			if (relid >= 27) { print_exception; }
+//			for (int j = 0; j < 9; j++) {
+//				atomicAdd(&rxCoarseStencil[relid][j][vcoarseId], st[i][j]);
+//			}
+//		}
+//	}
+//#endif
+//}
 
 template<int BlockSize = 256>
 __global__ void restrict_residual_kernel_1(
@@ -966,126 +980,127 @@ __global__ void restrict_residual_kernel_1(
 }
 
 // one thread of one coarse vertex
-template<int BlockSize = 256>
-__global__ void restrict_stencil_kernel_1(
-	int nv_coarse, int nv_fine,
-	VertexFlags* vflags,
-	VertexFlags* vfineflags
-) {
-	__shared__ int gsVertexEnd[8];
-	__shared__ int gsFineVertexEnd[8];
-	__shared__ int gsFineVertexReso[3][8];
+//template<int BlockSize = 256>
+//__global__ void restrict_stencil_kernel_1(
+//	int nv_coarse, int nv_fine,
+//	VertexFlags* vflags,
+//	VertexFlags* vfineflags
+//) {
+//	__shared__ int gsVertexEnd[8];
+//	__shared__ int gsFineVertexEnd[8];
+//	__shared__ int gsFineVertexReso[3][8];
+//
+//	if (threadIdx.x < 24) {
+//		gsFineVertexReso[threadIdx.x / 8][threadIdx.x % 8] = gGsFineVertexReso[threadIdx.x / 8][threadIdx.x % 8];
+//	}
+//	if (threadIdx.x < 8) {
+//		gsVertexEnd[threadIdx.x] = gGsVertexEnd[threadIdx.x];
+//		gsFineVertexEnd[threadIdx.x] = gGsFineVertexEnd[threadIdx.x];
+//	}
+//	__syncthreads();
+//
+//	bool fiction = false;
+//	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+//	if (tid >= nv_coarse) fiction = true;
+//
+//	VertexFlags vflag;
+//	if (!fiction) { 
+//		vflag = vflags[tid]; 
+//		fiction = vflag.is_fiction();
+//	}
+//
+//	int coarseRatio[3] = { gUpCoarse[0], gUpCoarse[1], gUpCoarse[2] };
+//
+//	float pr = coarseRatio[0] * coarseRatio[1] * coarseRatio[2];
+//
+//	GridVertexIndex indexer(gGridCellReso[0], gGridCellReso[1], gGridCellReso[2]);
+//	indexer.locate(tid, vflag.get_gscolor(), gsVertexEnd);
+//
+//	bool nondyadic = coarseRatio[0] > 2 || coarseRatio[1] > 2 || coarseRatio[2] > 2;
+//
+//	if (!fiction && !vflag.is_period_padding()) {
+//		for (int i = 0; i < 9; i++) {
+//			float st[27] = { 0. };
+//			for (int xoff = -coarseRatio[0] + 1; xoff < coarseRatio[0]; xoff++) {
+//				for (int yoff = -coarseRatio[1] + 1; yoff < coarseRatio[1]; yoff++) {
+//					for (int zoff = -coarseRatio[2] + 1; zoff < coarseRatio[2]; zoff++) {
+//						int off[3] = { xoff, yoff, zoff };
+//						float wi = (coarseRatio[0] - abs(xoff))*(coarseRatio[1] - abs(yoff))*(coarseRatio[2] - abs(zoff)) / pr;
+//						int neighId = -1;
+//						if (nondyadic) {
+//							neighId = indexer.neighFineVertex(off, coarseRatio, gsFineVertexEnd, gsFineVertexReso, true).getId();
+//						} else {
+//							neighId = indexer.neighFineVertex(off, coarseRatio, gsFineVertexEnd, gsFineVertexReso, false).getId();
+//						}
+//						// debug
+//						//{
+//						//	short3 pos = indexer.getPos();
+//						//	if (pos.x - 1 == 0 && pos.y - 1 == 1 && pos.z - 1 == 1) {
+//						//		if (off[0] == 0 && off[1] == -1 && off[2] == 0) {
+//						//			printf("vid = %d  neighId = %d \n", int(tid), neighId);
+//						//		}
+//						//	}
+//						//}
+//						if (neighId != -1) {
+//							//if (neighId >= nv_fine) {
+//							//	short3 p = indexer.getPos();
+//							//	printf("p = (%ld, %ld, %ld)  off = (%d, %d, %d)\n", p.x - 1, p.y - 1, p.z - 1, off[0], off[1], off[2]);
+//							//}
+//							VertexFlags vfineflag = vfineflags[neighId];
+//							if (!vfineflag.is_fiction()) {
+//								for (int k = 0; k < 27; k++) {
+//									float rxf = rxFineStencil[k][i][neighId] * wi;
+//									int inCoarse[3] = {
+//										coarseRatio[0] + off[0] + k % 3 - 1,
+//										coarseRatio[1] + off[1] + k / 3 % 3 - 1,
+//										coarseRatio[2] + off[2] + k / 9 - 1
+//									};
+//									int vcoarseBase[3] = {
+//										inCoarse[0] / coarseRatio[0],
+//										inCoarse[1] / coarseRatio[1],
+//										inCoarse[2] / coarseRatio[2],
+//									};
+//									int wpos[3] = {
+//										inCoarse[0] % coarseRatio[0],
+//										inCoarse[1] % coarseRatio[1],
+//										inCoarse[2] % coarseRatio[2],
+//									};
+//									for (int j = 0; j < 8; j++) {
+//										int jpos[3] = {
+//											j % 2 * coarseRatio[0],
+//											j / 2 % 2 * coarseRatio[1] ,
+//											j / 4 * coarseRatio[2]
+//										};
+//										// todo use intrisinc abs add sub
+//										float wj = (coarseRatio[0] - abs(wpos[0] - jpos[0])) *
+//											(coarseRatio[1] - abs(wpos[1] - jpos[1])) *
+//											(coarseRatio[2] - abs(wpos[2] - jpos[2])) / pr;
+//
+//										if (wj == 0) continue;
+//										int jid = (vcoarseBase[0] + j % 2) +
+//											(vcoarseBase[1] + j / 2 % 2) * 3 +
+//											(vcoarseBase[2] + j / 4) * 9;
+//										if (jid >= 27) print_exception;
+//										st[jid] += rxf * wj;
+//									}
+//									//st[k] += rxFineStencil[k][i][neighId] * wi;
+//								}
+//							}
+//						}
+//					}
+//				}
+//			}
+//			for (int k = 0; k < 27; k++) {
+//				//if (tid >= nv_coarse) {
+//				//	short3 p = indexer.getPos();
+//				//	printf("p = (%ld, %ld, %ld)\n", p.x - 1, p.y - 1, p.z - 1);
+//				//}
+//				rxstencil[k][i][tid] = st[k];
+//			}
+//		}
+//	}
+//}
 
-	if (threadIdx.x < 24) {
-		gsFineVertexReso[threadIdx.x / 8][threadIdx.x % 8] = gGsFineVertexReso[threadIdx.x / 8][threadIdx.x % 8];
-	}
-	if (threadIdx.x < 8) {
-		gsVertexEnd[threadIdx.x] = gGsVertexEnd[threadIdx.x];
-		gsFineVertexEnd[threadIdx.x] = gGsFineVertexEnd[threadIdx.x];
-	}
-	__syncthreads();
-
-	bool fiction = false;
-	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
-	if (tid >= nv_coarse) fiction = true;
-
-	VertexFlags vflag;
-	if (!fiction) { 
-		vflag = vflags[tid]; 
-		fiction = vflag.is_fiction();
-	}
-
-	int coarseRatio[3] = { gUpCoarse[0], gUpCoarse[1], gUpCoarse[2] };
-
-	float pr = coarseRatio[0] * coarseRatio[1] * coarseRatio[2];
-
-	GridVertexIndex indexer(gGridCellReso[0], gGridCellReso[1], gGridCellReso[2]);
-	indexer.locate(tid, vflag.get_gscolor(), gsVertexEnd);
-
-	bool nondyadic = coarseRatio[0] > 2 || coarseRatio[1] > 2 || coarseRatio[2] > 2;
-
-	if (!fiction && !vflag.is_period_padding()) {
-		for (int i = 0; i < 9; i++) {
-			float st[27] = { 0. };
-			for (int xoff = -coarseRatio[0] + 1; xoff < coarseRatio[0]; xoff++) {
-				for (int yoff = -coarseRatio[1] + 1; yoff < coarseRatio[1]; yoff++) {
-					for (int zoff = -coarseRatio[2] + 1; zoff < coarseRatio[2]; zoff++) {
-						int off[3] = { xoff, yoff, zoff };
-						float wi = (coarseRatio[0] - abs(xoff))*(coarseRatio[1] - abs(yoff))*(coarseRatio[2] - abs(zoff)) / pr;
-						int neighId = -1;
-						if (nondyadic) {
-							neighId = indexer.neighFineVertex(off, coarseRatio, gsFineVertexEnd, gsFineVertexReso, true).getId();
-						} else {
-							neighId = indexer.neighFineVertex(off, coarseRatio, gsFineVertexEnd, gsFineVertexReso, false).getId();
-						}
-						// debug
-						//{
-						//	short3 pos = indexer.getPos();
-						//	if (pos.x - 1 == 0 && pos.y - 1 == 1 && pos.z - 1 == 1) {
-						//		if (off[0] == 0 && off[1] == -1 && off[2] == 0) {
-						//			printf("vid = %d  neighId = %d \n", int(tid), neighId);
-						//		}
-						//	}
-						//}
-						if (neighId != -1) {
-							//if (neighId >= nv_fine) {
-							//	short3 p = indexer.getPos();
-							//	printf("p = (%ld, %ld, %ld)  off = (%d, %d, %d)\n", p.x - 1, p.y - 1, p.z - 1, off[0], off[1], off[2]);
-							//}
-							VertexFlags vfineflag = vfineflags[neighId];
-							if (!vfineflag.is_fiction()) {
-								for (int k = 0; k < 27; k++) {
-									float rxf = rxFineStencil[k][i][neighId] * wi;
-									int inCoarse[3] = {
-										coarseRatio[0] + off[0] + k % 3 - 1,
-										coarseRatio[1] + off[1] + k / 3 % 3 - 1,
-										coarseRatio[2] + off[2] + k / 9 - 1
-									};
-									int vcoarseBase[3] = {
-										inCoarse[0] / coarseRatio[0],
-										inCoarse[1] / coarseRatio[1],
-										inCoarse[2] / coarseRatio[2],
-									};
-									int wpos[3] = {
-										inCoarse[0] % coarseRatio[0],
-										inCoarse[1] % coarseRatio[1],
-										inCoarse[2] % coarseRatio[2],
-									};
-									for (int j = 0; j < 8; j++) {
-										int jpos[3] = {
-											j % 2 * coarseRatio[0],
-											j / 2 % 2 * coarseRatio[1] ,
-											j / 4 * coarseRatio[2]
-										};
-										// todo use intrisinc abs add sub
-										float wj = (coarseRatio[0] - abs(wpos[0] - jpos[0])) *
-											(coarseRatio[1] - abs(wpos[1] - jpos[1])) *
-											(coarseRatio[2] - abs(wpos[2] - jpos[2])) / pr;
-
-										if (wj == 0) continue;
-										int jid = (vcoarseBase[0] + j % 2) +
-											(vcoarseBase[1] + j / 2 % 2) * 3 +
-											(vcoarseBase[2] + j / 4) * 9;
-										if (jid >= 27) print_exception;
-										st[jid] += rxf * wj;
-									}
-									//st[k] += rxFineStencil[k][i][neighId] * wi;
-								}
-							}
-						}
-					}
-				}
-			}
-			for (int k = 0; k < 27; k++) {
-				//if (tid >= nv_coarse) {
-				//	short3 p = indexer.getPos();
-				//	printf("p = (%ld, %ld, %ld)\n", p.x - 1, p.y - 1, p.z - 1);
-				//}
-				rxstencil[k][i][tid] = st[k];
-			}
-		}
-	}
-}
 
 template<int BlockSize = 256>
 __global__ void prolongate_correction_kernel_1(
@@ -1465,7 +1480,7 @@ __global__ void update_residual_kernel_1(
 	GridVertexIndex indexer(gGridCellReso[0], gGridCellReso[1], gGridCellReso[2]);
 	indexer.locate(vid, vflag.get_gscolor(), gsVertexEnd);
 
-	double KeU[3] = { 0. };
+	glm::vec<3, double> KeU(0.);
 	if (!fiction && !vflag.is_period_padding()) {
 		for (auto off : { 0,9,18 }) {
 			int vneigh = off + warpId;
@@ -1473,19 +1488,8 @@ __global__ void update_residual_kernel_1(
 			if (neighId != -1) {
 				VertexFlags neighFlag = vflags[neighId];
 				if (!neighFlag.is_fiction()) {
-					double u[3] = { gU[0][neighId],gU[1][neighId],gU[2][neighId] };
-					KeU[0] +=
-						rxstencil[vneigh][0][vid] * u[0] +
-						rxstencil[vneigh][1][vid] * u[1] +
-						rxstencil[vneigh][2][vid] * u[2];
-					KeU[1] +=
-						rxstencil[vneigh][3][vid] * u[0] +
-						rxstencil[vneigh][4][vid] * u[1] +
-						rxstencil[vneigh][5][vid] * u[2];
-					KeU[2] +=
-						rxstencil[vneigh][6][vid] * u[0] +
-						rxstencil[vneigh][7][vid] * u[1] +
-						rxstencil[vneigh][8][vid] * u[2];
+					glm::vec<3, double> u(gU[0][neighId], gU[1][neighId], gU[2][neighId]);
+					KeU += rxstencil[vneigh][vid] * u;
 				}
 			}
 		}
@@ -2342,17 +2346,18 @@ void homo::Grid::restrict_stencil(void)
 {
 	if (is_root) return;
 	if (fine->assemb_otf) {
-		fine->useGrid_g();
+		//fine->useGrid_g();
+		useGrid_g();
 		size_t grid_size, block_size;
 		for (int i = 0; i < 27; i++) {
-			for (int j = 0; j < 9; j++) {
-				cudaMemset(stencil_g[i][j], 0, sizeof(float) * n_gsvertices());
-			}
+			cudaMemset(stencil_g[i], 0, sizeof(glm::mat3) * n_gsvertices());
 		}
 		cudaDeviceSynchronize();
 		cuda_error_check;
-		make_kernel_param(&grid_size, &block_size, fine->n_gscells(), 256);
-		restrict_stencil_otf_kernel_1 << <grid_size, block_size >> > (fine->n_gscells(), fine->rho_g, fine->cellflag, fine->vertflag, fine->diag_strength);
+		int nv = (cellReso[0] + 1) * (cellReso[1] + 1) * (cellReso[2] + 1);
+		make_kernel_param(&grid_size, &block_size, nv, 256);
+		//restrict_stencil_otf_kernel_1 << <grid_size, block_size >> > (fine->n_gscells(), fine->rho_g, fine->cellflag, fine->vertflag, fine->diag_strength);
+		restrict_stencil_otf_aos_kernel_1 << <grid_size, block_size >> > (nv, fine->rho_g, fine->cellflag, fine->vertflag);
 		cudaDeviceSynchronize();
 		cuda_error_check;
 
@@ -2382,7 +2387,8 @@ void homo::Grid::restrict_stencil(void)
 		//printf("--\n");
 		size_t grid_size, block_size;
 		make_kernel_param(&grid_size, &block_size, n_gsvertices(), 256);
-		restrict_stencil_kernel_1 << <grid_size, block_size >> > (n_gsvertices(), nvfine, vertflag, fine->vertflag);
+		//restrict_stencil_kernel_1 << <grid_size, block_size >> > (n_gsvertices(), nvfine, vertflag, fine->vertflag);
+		restrict_stencil_aos_kernel_1 << <grid_size, block_size >> > (n_gsvertices(), nvfine, vertflag, fine->vertflag);
 		cudaDeviceSynchronize();
 		cuda_error_check;
 		//stencil2matlab("Khost");
@@ -2502,167 +2508,179 @@ void homo::Grid::lexi2gsorder(float* src, float* dst, LexiType type_, bool lexip
 	}
 }
 
+__global__ void lexiStencil2gsorder_kernel(int nv, const glm::mat3* src, glm::mat3* dst) {
+	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+	if (tid >= nv) return;
+	int vpos[3] = {
+		tid % (gGridCellReso[0] + 1),
+		tid / (gGridCellReso[0] + 1) % (gGridCellReso[1] + 1),
+		tid / ((gGridCellReso[0] + 1) * (gGridCellReso[1] + 1))
+	};
+	int gsid = lexi2gs(vpos, gGsVertexReso, gGsVertexEnd, false);
+	dst[gsid] = src[tid];
+}
+
 void homo::Grid::lexiStencil2gsorder(void)
 {
-	auto tmpname = getMem().addBuffer(n_gsvertices() * sizeof(float));
-	float* tmp = getMem().getBuffer(tmpname)->data<float>();
+	auto tmpname = getMem().addBuffer(n_gsvertices() * sizeof(glm::mat3));
+	glm::mat3* tmp = getMem().getBuffer(tmpname)->data<glm::mat3>();
+	int nv = (cellReso[0] + 1) * (cellReso[1] + 1) * (cellReso[2] + 1);
 	for (int i = 0; i < 27; i++) {
-		for (int j = 0; j < 9; j++) {
-			cudaMemset(tmp, 0, sizeof(float) * n_gsvertices());
-			cudaDeviceSynchronize();
-			cuda_error_check;
-			lexi2gsorder(stencil_g[i][j], tmp, VERTEX);
-			cudaMemcpy(stencil_g[i][j], tmp, sizeof(float) * n_gsvertices(), cudaMemcpyDeviceToDevice);
-		}
+		cudaMemset(tmp, 0, sizeof(glm::mat3) * n_gsvertices());
+		//lexi2gsorder(stencil_g[i][j], tmp, VERTEX);
+		size_t grid_size, block_size;
+		make_kernel_param(&grid_size, &block_size, nv, 512);
+		lexiStencil2gsorder_kernel << <grid_size, block_size >> > (nv, stencil_g[i], tmp);
+		cudaDeviceSynchronize();
+		cuda_error_check;
+		cudaMemcpy(stencil_g[i], tmp, sizeof(glm::mat3) * n_gsvertices(), cudaMemcpyDeviceToDevice);
 	}
+	getMem().deleteBuffer(tmpname);
 	cuda_error_check;
 }	
 
-template<int BlockSize = 256>
-__global__ void enforce_period_stencil_stage_kernel(void) {
-	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
-	//__shared__ float st[9][BlockSize];
+//template<int BlockSize = 256>
+//__global__ void enforce_period_stencil_stage_kernel(void) {
+//	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+//	//__shared__ float st[9][BlockSize];
+//
+//	//if (threadIdx.x < BlockSize) {
+//	//	for (int i = 0; i < 9; i++) {
+//	//		st[i][threadIdx.x] = 0;
+//	//	}
+//	//}
+//	//__syncthreads();
+//
+//	float st[9];
+//
+//	int vreso[3] = { gGridCellReso[0] + 1,gGridCellReso[1] + 1, gGridCellReso[2] + 1 };
+//
+//	int v123 = vreso[0] * vreso[1] * vreso[2];
+//
+//	int neighid = tid / v123;
+//	tid = tid % v123;
+//
+//	if (neighid >= 27) return;
+//
+//	int gsid_min = -1;
+//	int gsid_max = -1;
+//
+//	do {
+//		// down - up
+//		int du_end = vreso[0] * vreso[1];
+//		if (tid < du_end) {
+//			int vid = tid;
+//			int pos[3] = { vid % vreso[0], vid / vreso[0], 0 };
+//			gsid_min = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
+//			pos[2] = vreso[2] - 1;
+//			gsid_max = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
+//			break;
+//		}
+//
+//		// left - right
+//		int lr_end = du_end + vreso[1] * vreso[2];
+//		if (tid < lr_end) {
+//			int vid = tid - du_end;
+//			int pos[3] = { 0, vid % vreso[1], vid / vreso[1] };
+//			gsid_min = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
+//			pos[0] = vreso[0] - 1;
+//			gsid_max = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
+//			break;
+//		}
+//
+//		// near - far
+//		int nf_end = lr_end + vreso[0] * vreso[2];
+//		if (tid < nf_end) {
+//			int vid = tid - lr_end;
+//			int pos[3] = { vid % vreso[0], 0 , vid / vreso[0] };
+//			gsid_min = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
+//			pos[1] = vreso[1] - 1;
+//			gsid_max = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
+//			break;
+//		}
+//	} while (0);
+//
+//	if (gsid_min != -1 && gsid_max != -1) {
+//		for (int j = 0; j < 9; j++) {
+//			atomicAdd(&rxstencil[neighid][j][gsid_min], rxstencil[neighid][j][gsid_max]);
+//		}
+//	}
+//}
 
-	//if (threadIdx.x < BlockSize) {
-	//	for (int i = 0; i < 9; i++) {
-	//		st[i][threadIdx.x] = 0;
-	//	}
-	//}
-	//__syncthreads();
-
-	float st[9];
-
-	int vreso[3] = { gGridCellReso[0] + 1,gGridCellReso[1] + 1, gGridCellReso[2] + 1 };
-
-	int v123 = vreso[0] * vreso[1] * vreso[2];
-
-	int neighid = tid / v123;
-	tid = tid % v123;
-
-	if (neighid >= 27) return;
-
-	int gsid_min = -1;
-	int gsid_max = -1;
-
-	do {
-		// down - up
-		int du_end = vreso[0] * vreso[1];
-		if (tid < du_end) {
-			int vid = tid;
-			int pos[3] = { vid % vreso[0], vid / vreso[0], 0 };
-			gsid_min = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
-			pos[2] = vreso[2] - 1;
-			gsid_max = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
-			break;
-		}
-
-		// left - right
-		int lr_end = du_end + vreso[1] * vreso[2];
-		if (tid < lr_end) {
-			int vid = tid - du_end;
-			int pos[3] = { 0, vid % vreso[1], vid / vreso[1] };
-			gsid_min = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
-			pos[0] = vreso[0] - 1;
-			gsid_max = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
-			break;
-		}
-
-		// near - far
-		int nf_end = lr_end + vreso[0] * vreso[2];
-		if (tid < nf_end) {
-			int vid = tid - lr_end;
-			int pos[3] = { vid % vreso[0], 0 , vid / vreso[0] };
-			gsid_min = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
-			pos[1] = vreso[1] - 1;
-			gsid_max = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
-			break;
-		}
-	} while (0);
-
-	if (gsid_min != -1 && gsid_max != -1) {
-		for (int j = 0; j < 9; j++) {
-			atomicAdd(&rxstencil[neighid][j][gsid_min], rxstencil[neighid][j][gsid_max]);
-		}
-	}
-}
-
-template<int BlockSize = 256>
-__global__ void enforce_period_stencil_subst_kernel(void) {
-	
-	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
-	int vreso[3] = { gGridCellReso[0] + 1,gGridCellReso[1] + 1, gGridCellReso[2] + 1 };
-
-	int gsid_min = -1;
-	int gsid_max = -1;
-
-	do {
-		// down - up
-		int du_end = vreso[0] * vreso[1];
-		if (tid < du_end) {
-			int vid = tid;
-			int pos[3] = { vid % vreso[0], vid / vreso[0], 0 };
-			gsid_min = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
-			pos[2] = vreso[2] - 1;
-			gsid_max = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
-			break;
-		}
-
-		// left - right
-		int lr_end = du_end + vreso[1] * vreso[2];
-		if (tid < lr_end) {
-			int vid = tid - du_end;
-			int pos[3] = { 0, vid % vreso[1], vid / vreso[1] };
-			gsid_min = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
-			pos[0] = vreso[0] - 1;
-			gsid_max = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
-			break;
-		}
-
-		// near - far
-		int nf_end = lr_end + vreso[0] * vreso[2];
-		if (tid < nf_end) {
-			int vid = tid - lr_end;
-			int pos[3] = { vid % vreso[0], 0 , vid / vreso[0] };
-			gsid_min = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
-			pos[1] = vreso[1] - 1;
-			gsid_max = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
-			break;
-		}
-	} while (0);
-
-	if (gsid_min != -1 && gsid_max != -1) {
-		for (int i = 0; i < 27; i++) {
-			for (int j = 0; j < 9; j++) {
-				rxstencil[i][j][gsid_max] = rxstencil[i][j][gsid_min];
-			}
-		}
-	}
-}
+//template<int BlockSize = 256>
+//__global__ void enforce_period_stencil_subst_kernel(void) {
+//	
+//	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+//	int vreso[3] = { gGridCellReso[0] + 1,gGridCellReso[1] + 1, gGridCellReso[2] + 1 };
+//
+//	int gsid_min = -1;
+//	int gsid_max = -1;
+//
+//	do {
+//		// down - up
+//		int du_end = vreso[0] * vreso[1];
+//		if (tid < du_end) {
+//			int vid = tid;
+//			int pos[3] = { vid % vreso[0], vid / vreso[0], 0 };
+//			gsid_min = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
+//			pos[2] = vreso[2] - 1;
+//			gsid_max = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
+//			break;
+//		}
+//
+//		// left - right
+//		int lr_end = du_end + vreso[1] * vreso[2];
+//		if (tid < lr_end) {
+//			int vid = tid - du_end;
+//			int pos[3] = { 0, vid % vreso[1], vid / vreso[1] };
+//			gsid_min = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
+//			pos[0] = vreso[0] - 1;
+//			gsid_max = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
+//			break;
+//		}
+//
+//		// near - far
+//		int nf_end = lr_end + vreso[0] * vreso[2];
+//		if (tid < nf_end) {
+//			int vid = tid - lr_end;
+//			int pos[3] = { vid % vreso[0], 0 , vid / vreso[0] };
+//			gsid_min = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
+//			pos[1] = vreso[1] - 1;
+//			gsid_max = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
+//			break;
+//		}
+//	} while (0);
+//
+//	if (gsid_min != -1 && gsid_max != -1) {
+//		for (int i = 0; i < 27; i++) {
+//			for (int j = 0; j < 9; j++) {
+//				rxstencil[i][j][gsid_max] = rxstencil[i][j][gsid_min];
+//			}
+//		}
+//	}
+//}
 
 void homo::Grid::enforce_period_stencil(bool additive)
 {
 	useGrid_g();
 #if 0
-	size_t grid_size, block_size;
-	int vreso[3] = { cellReso[0] + 1,cellReso[1] + 1,cellReso[2] + 1 };
-	int n_faces = (vreso[0] * vreso[1] + vreso[1] * vreso[2] + vreso[0] * vreso[2]);
-	int n = n_faces * 27;
-	make_kernel_param(&grid_size, &block_size, n, 256);
-	enforce_period_stencil_stage_kernel <<< grid_size, block_size >>> ();
-	cudaDeviceSynchronize();
-	cuda_error_check;
+	//size_t grid_size, block_size;
+	//int vreso[3] = { cellReso[0] + 1,cellReso[1] + 1,cellReso[2] + 1 };
+	//int n_faces = (vreso[0] * vreso[1] + vreso[1] * vreso[2] + vreso[0] * vreso[2]);
+	//int n = n_faces * 27;
+	//make_kernel_param(&grid_size, &block_size, n, 256);
+	//enforce_period_stencil_stage_kernel <<< grid_size, block_size >>> ();
+	//cudaDeviceSynchronize();
+	//cuda_error_check;
 
-	make_kernel_param(&grid_size, &block_size, n_faces, 256);
-	enforce_period_stencil_subst_kernel <<< grid_size, block_size >>> ();
-	cudaDeviceSynchronize();
-	cuda_error_check;
+	//make_kernel_param(&grid_size, &block_size, n_faces, 256);
+	//enforce_period_stencil_subst_kernel <<< grid_size, block_size >>> ();
+	//cudaDeviceSynchronize();
+	//cuda_error_check;
 #else
 	for (int i = 0; i < 27; i++) {
-		for (int j = 0; j < 9; j+=3) {
-			float* st[3] = { stencil_g[i][j],stencil_g[i][j + 1],stencil_g[i][j + 2] };
-			enforce_period_vertex(st, additive);
-			pad_vertex_data(st);
-		}
+		enforce_period_vertex(stencil_g[i], additive);
+		pad_vertex_data(stencil_g[i]);
 	}
 #endif
 }
@@ -3059,6 +3077,77 @@ __global__ void enforce_period_boundary_vertex_kernel(int siz, devArray_t<T*, 3>
 
 }
 
+template<typename VecIter>
+__global__ void enforce_period_boundary_vertex_aos_kernel(int siz, VecIter v, VertexFlags* vflags, bool additive = false) {
+	using Vec = std::remove_reference_t<decltype(*v)>;
+	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+	if (tid >= siz) return;
+	int pos[3] = { -2,-2,-2 };
+	int ereso[3] = { gGridCellReso[0],gGridCellReso[1],gGridCellReso[2] };
+
+	//bool debug = false;
+
+	do {
+		if (tid < ereso[0] * ereso[1]) {
+			pos[0] = tid % ereso[0];
+			pos[1] = tid / ereso[0];
+			pos[2] = 0;
+			break;
+		}
+		tid -= ereso[0] * ereso[1];
+		if (tid < ereso[1] *(ereso[2]-1)) {
+			pos[0] = 0;
+			pos[1] = tid % ereso[1];
+			pos[2] = tid / ereso[1] + 1;
+			break;
+		}
+		tid -= ereso[1] * (ereso[2] - 1);
+		if (tid < (ereso[0] - 1) * (ereso[2] - 1)) {
+			pos[0] = tid % (ereso[0] - 1) + 1;
+			pos[1] = 0;
+			pos[2] = tid / (ereso[0] - 1) + 1;
+			break;
+		}
+	} while (0);
+	if (pos[0] <= -2 || pos[1] <= -2 || pos[2] <= -2) return;
+
+	//if (pos[0] == 0 && pos[1] == 7 && pos[2] == 0) debug = true;
+
+	int gsid = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
+	VertexFlags vflag = vflags[gsid];
+	//T val[3] = { /*v[0][gsid],v[1][gsid],v[2][gsid]*/ };
+	Vec val(0.);
+	int op_ids[8] = { -1 ,-1,-1,-1, -1 ,-1,-1,-1 };
+	{
+		int op_pos[3];
+		for (int i = 0; i < vflag.is_set(LEFT_BOUNDARY) + 1; i++) {
+			op_pos[0] = pos[0];
+			if (i) op_pos[0] += ereso[0];
+			for (int j = 0; j < vflag.is_set(NEAR_BOUNDARY) + 1; j++) {
+				op_pos[1] = pos[1];
+				if (j) op_pos[1] += ereso[1];
+				for (int k = 0; k < vflag.is_set(DOWN_BOUNDARY) + 1; k++) {
+					op_pos[2] = pos[2];
+					if (k) op_pos[2] += ereso[2];
+					int op_id = lexi2gs(op_pos, gGsVertexReso, gGsVertexEnd);
+					op_ids[i * 4 + j * 2 + k] = op_id;
+					if (additive) val += v[op_id];
+				}
+			}
+		}
+	}
+
+	// enforce period boundary
+	for (int i = 0; i < 8; i++) {
+		if (op_ids[i] != -1) {
+			if (additive) v[op_ids[i]] = val;
+			else v[op_ids[i]] = v[gsid];
+		}
+	}
+	if (additive) { v[gsid] = val; }
+
+}
+
 void homo::Grid::enforce_period_vertex(double* v[3], bool additive /*= false*/)
 {
 	int nvdup = cellReso[0] * cellReso[1]
@@ -3068,6 +3157,17 @@ void homo::Grid::enforce_period_vertex(double* v[3], bool additive /*= false*/)
 	size_t grid_size, block_size;
 	make_kernel_param(&grid_size, &block_size, nvdup, 256);
 	enforce_period_boundary_vertex_kernel << <grid_size, block_size >> > (nvdup, varr, vertflag, additive);
+	cudaDeviceSynchronize();
+	cuda_error_check;
+}
+
+void homo::Grid::enforce_period_vertex(glm::mat3* v, bool additive /*= false*/) {
+	int nvdup = cellReso[0] * cellReso[1]
+		+ cellReso[1] * (cellReso[2] - 1)
+		+ (cellReso[0] - 1) * (cellReso[2] - 1);
+	size_t grid_size, block_size;
+	make_kernel_param(&grid_size, &block_size, nvdup, 256);
+	enforce_period_boundary_vertex_aos_kernel << <grid_size, block_size >> > (nvdup, v, vertflag, additive);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 }
@@ -3210,6 +3310,118 @@ __global__ void pad_vertex_data_kernel(int nvfacepad, int nvedgepadd, devArray_t
 	
 }
 
+template<typename VecIter>
+__global__ void pad_vertex_data_aos_kernel(int nvfacepad, int nvedgepadd, VecIter v, VertexFlags* vflags) {
+	using Vec = std::remove_reference_t<decltype(*v)>;
+	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+	if (tid >= nvfacepad + nvedgepadd) return;
+	int ereso[3] = { gGridCellReso[0],gGridCellReso[1],gGridCellReso[2] };
+
+	//bool debug = false;
+
+	int boundaryType = -1;
+
+	if (tid < nvfacepad) {
+		int pos[3] = { -2,-2,-2 };
+		// padd face
+		do {
+			if (tid < (ereso[0] + 1) * (ereso[1] + 1)) {
+				pos[0] = tid % (ereso[0] + 1);
+				pos[1] = tid / (ereso[0] + 1);
+				pos[2] = 0;
+				boundaryType = 0;
+				break;
+			}
+			tid -= (ereso[0] + 1) * (ereso[1] + 1);
+			if (tid < (ereso[1] + 1) * (ereso[2] + 1)) {
+				pos[0] = 0;
+				pos[1] = tid % (ereso[1] + 1);
+				pos[2] = tid / (ereso[1] + 1);
+				boundaryType = 1;
+				break;
+			}
+			tid -= (ereso[1] + 1) * (ereso[2] + 1);
+			if (tid < (ereso[0] + 1) * (ereso[2] + 1)) {
+				pos[0] = tid % (ereso[0] + 1);
+				pos[1] = 0;
+				pos[2] = tid / (ereso[0] + 1);
+				boundaryType = 2;
+				break;
+			}
+		} while (0);
+		if (pos[0] <= -2 || pos[1] <= -2 || pos[2] <= -2) return;
+
+		int gsid = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
+		VertexFlags vflag = vflags[gsid];	// padding 
+		if (boundaryType == 1) {
+			for (int i : {-1, 1}) {
+				int p[3] = { pos[0] + i, pos[1], pos[2] };
+				int q[3] = { pos[0] + ereso[0] + i, pos[1], pos[2] };
+				int pid = lexi2gs(p, gGsVertexReso, gGsVertexEnd);
+				int qid = lexi2gs(q, gGsVertexReso, gGsVertexEnd);
+				if (i == -1) v[pid] = v[qid];
+				if (i == 1) v[qid] = v[pid];
+			}
+		}
+		if (boundaryType == 2) {
+			for (int i : {-1, 1}) {
+				int p[3] = { pos[0] , pos[1] + i, pos[2] };
+				int q[3] = { pos[0] , pos[1] + ereso[1] + i, pos[2] };
+				int pid = lexi2gs(p, gGsVertexReso, gGsVertexEnd);
+				int qid = lexi2gs(q, gGsVertexReso, gGsVertexEnd);
+				if (i == -1) v[pid] = v[qid];
+				if (i == 1) v[qid] = v[pid];
+			}
+		}
+		if (boundaryType == 0) {
+			for (int i : {-1, 1}) {
+				int p[3] = { pos[0] , pos[1] , pos[2] + i };
+				int q[3] = { pos[0] , pos[1] , pos[2] + ereso[2] + i };
+				int pid = lexi2gs(p, gGsVertexReso, gGsVertexEnd);
+				int qid = lexi2gs(q, gGsVertexReso, gGsVertexEnd);
+				if (i == -1)  v[pid] = v[qid];
+				if (i == 1) v[qid] = v[pid];
+			}
+		}
+	}
+	else if (tid - nvfacepad < nvedgepadd) {
+		bool debug = false;
+		// padd edge
+		int id = tid - nvfacepad;
+		int nv_bot = (ereso[0] + 3) * (ereso[1] + 3) - (ereso[0] + 1) * (ereso[1] + 1);
+		int po[3] = { 0,0,0 };
+		if (id < 2 * nv_bot) {
+			po[2] = id / nv_bot * (ereso[2] + 2);
+			id = id % nv_bot;
+			if (id < 2 * (ereso[0] + 3)) {
+				po[0] = id % (ereso[0] + 3);
+				po[1] = id / (ereso[0] + 3) * (ereso[1] + 2);
+			} else {
+				id -= 2 * (ereso[0] + 3);
+				po[0] = id / (ereso[1] + 1) * (ereso[0] + 2);
+				po[1] = id % (ereso[1] + 1) + 1;
+			}
+		}
+		else {
+			id -= 2 * nv_bot;
+			int hid = id / (ereso[2] + 1);
+			int vid = id % (ereso[2] + 1);
+			po[0] = hid % 2 * (ereso[0] + 2);
+			po[1] = hid / 2 * (ereso[1] + 2);
+			po[2] = vid + 1;
+		}
+		po[0] -= 1; po[1] -= 1; po[2] -= 1;
+		int op_pos[3];
+		for (int i = 0; i < 3; i++) {
+			op_pos[i] = (po[i] + ereso[i]) % ereso[i];
+		}
+		int myid = lexi2gs(po, gGsVertexReso, gGsVertexEnd);
+		int opid = lexi2gs(op_pos, gGsVertexReso, gGsVertexEnd);
+		v[myid] = v[opid];
+	}
+	
+}
+
 void homo::Grid::pad_vertex_data(double* v[3])
 {
 	int nvpadface = (cellReso[0] + 1) * (cellReso[1] + 1) +
@@ -3226,6 +3438,18 @@ void homo::Grid::pad_vertex_data(double* v[3])
 	cuda_error_check;
 }
 
+void homo::Grid::pad_vertex_data(glm::mat3* v) {
+	int nvpadface = (cellReso[0] + 1) * (cellReso[1] + 1) +
+		(cellReso[1] + 1) * (cellReso[2] + 1) +
+		(cellReso[0] + 1) * (cellReso[2] + 1);
+	int nvpadedge = 2 * ((cellReso[0] + 3) * (cellReso[1] + 3) - (cellReso[0] + 1) * (cellReso[1] + 1)) +
+		4 * (cellReso[2] + 1);
+	size_t grid_size, block_size;
+	make_kernel_param(&grid_size, &block_size, nvpadface + nvpadedge, 256);
+	pad_vertex_data_aos_kernel << <grid_size, block_size >> > (nvpadface, nvpadedge, v, vertflag);
+	cudaDeviceSynchronize();
+	cuda_error_check;
+}
 
 template<typename T>
 __global__ void enforce_period_element_kernel(int siz, T* celldata, CellFlags* eflags) {

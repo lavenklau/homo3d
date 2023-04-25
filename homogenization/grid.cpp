@@ -208,9 +208,10 @@ size_t Grid::allocateBuffer(int nv, int ne)
 	// allocate stencil buffer
 	if (!is_root) {
 		for (int i = 0; i < 27; i++) {
-			for (int j = 0; j < 9; j++) {
-				stencil_g[i][j] = getMem().addBuffer(homoutils::formated("%s_st_%d_%d", getName().c_str(), i, j), nv * sizeof(float))->data<float>();
-			}
+			//for (int j = 0; j < 9; j++) {
+			//	stencil_g[i][j] = getMem().addBuffer(homoutils::formated("%s_st_%d_%d", getName().c_str(), i, j), nv * sizeof(float))->data<float>();
+			//}
+			stencil_g[i] = getMem().addBuffer(homoutils::formated("%s_st_%d", getName().c_str(), i), nv * sizeof(glm::mat3))->data<glm::mat3>();
 		}
 		total += nv * sizeof(float) * 27 * 9;
 	}
@@ -397,19 +398,23 @@ void homo::Grid::enforce_dirichlet_stencil(void) {
 			int nei_lexid = vlexpos2vlexid_h(nei_pos);
 			int nei_gsid = vlexid2gsid(nei_lexid, true);
 			if (offid != 13) {
-				for (int i = 0; i < 9; i++) {
-					cudaMemset(stencil_g[offid][i] + d_gsid, 0, sizeof(stencil_g[0][0][0]));
-					cudaMemset(stencil_g[26 - offid][i] + nei_gsid, 0, sizeof(stencil_g[0][0][0]));
-				}
+				//for (int i = 0; i < 9; i++) {
+				//	cudaMemset(stencil_g[offid][i] + d_gsid, 0, sizeof(stencil_g[0][0][0]));
+				//	cudaMemset(stencil_g[26 - offid][i] + nei_gsid, 0, sizeof(stencil_g[0][0][0]));
+				//}
+				cudaMemset(stencil_g[offid] + d_gsid, 0, sizeof(glm::mat3));
+				cudaMemset(stencil_g[26 - offid] + nei_gsid, 0, sizeof(glm::mat3));
 			}
 			else {
-				for (int i = 0; i < 9; i++) {
-					cudaMemset(stencil_g[offid][i] + d_gsid, 0, sizeof(stencil_g[0][0][0]));
-				}
-				for (int row = 0; row < 3; row++) {
-					double d = 1;
-					cudaMemcpy(stencil_g[13][row * 3 + row] + d_gsid, &d, sizeof(double), cudaMemcpyHostToDevice);
-				}
+				//for (int i = 0; i < 9; i++) {
+				//	cudaMemset(stencil_g[offid][i] + d_gsid, 0, sizeof(stencil_g[0][0][0]));
+				//}
+				//for (int row = 0; row < 3; row++) {
+				//	double d = 1;
+				//	cudaMemcpy(stencil_g[13][row * 3 + row] + d_gsid, &d, sizeof(double), cudaMemcpyHostToDevice);
+				//}
+				glm::mat3 id(1.);
+				cudaMemcpy(stencil_g[13] + d_gsid, &id, sizeof(id), cudaMemcpyHostToDevice);
 			}
 		}
 	}
@@ -462,7 +467,7 @@ void homo::Grid::assembleHostMatrix(void)
 		Eigen::Matrix<double, -1, 1> bhost(Khost.rows(), 1);
 		bhost.setRandom();
 		bhost = bhost - transBase * (transBase.transpose() * bhost);
-		Eigen::Vector<double, -1> x = hostBiCGSolver.solve(bhost);
+		Eigen::VectorXd x = hostBiCGSolver.solve(bhost);
 		if (hostBiCGSolver.info() != Eigen::Success) {
 			printf("\033[31mSolver test failed, err = %d\033[0m\n", int(hostBiCGSolver.info()));
 		}
@@ -552,8 +557,17 @@ void homo::Grid::writeStencil(const std::string& fname)
 	for (int i = 0; i < 27 * 9; i++) {
 		stencil[i].resize(n_gsvertices());
 	}
-	for (int i = 0; i < 27 * 9; i++) {
-		cudaMemcpy(stencil[i].data(), stencil_g[i / 9][i % 9], sizeof(float) * n_gsvertices(), cudaMemcpyDeviceToHost);
+	//for (int i = 0; i < 27 * 9; i++) {
+	//	cudaMemcpy(stencil[i].data(), stencil_g[i / 9][i % 9], sizeof(float) * n_gsvertices(), cudaMemcpyDeviceToHost);
+	//}
+	for (int i = 0; i < 27; i++) {
+		std::vector<glm::mat3> stmat(n_gsvertices());
+		cudaMemcpy(stmat.data(), stencil_g[i], sizeof(glm::mat3) * n_gsvertices(), cudaMemcpyDeviceToHost);
+		for (int j = 0; j < 9; j++) {
+			for (int k = 0; k < n_gsvertices(); k++) {
+				stencil[i * 9 + j][k] = stmat[k][j % 3][j / 3];
+			}
+		}
 	}
 	homoutils::writeVectors(fname, stencil);
 }
@@ -864,11 +878,13 @@ void homo::Grid::lexistencil2matlab(const std::string& name)
 	Eigen::SparseMatrix<double> K(n_lexiv * 3, n_lexiv * 3);
 	using trip = Eigen::Triplet<double>;
 	std::vector<trip> trips;
-	std::vector<float> kij(n_gsvertices());
+	//std::vector<float> kij(n_gsvertices());
+	std::vector<glm::mat3> kij(n_gsvertices());
 	for (int i = 0; i < 27; i++) {
 		int noff[3] = { i % 3 - 1, i / 3 % 3 - 1, i / 9 - 1 };
+		cudaMemcpy(kij.data(), stencil_g[i], sizeof(glm::mat3) * n_gsvertices(), cudaMemcpyDeviceToHost);
 		for (int j = 0; j < 9; j++) {
-			cudaMemcpy(kij.data(), stencil_g[i][j], sizeof(float) * n_gsvertices(), cudaMemcpyDeviceToHost);
+			//cudaMemcpy(kij.data(), stencil_g[i][j], sizeof(float) * n_gsvertices(), cudaMemcpyDeviceToHost);
 			for (int k = 0; k < n_lexiv; k++) {
 				int kpos[3] = {
 					k % (cellReso[0] + 1), 
@@ -882,7 +898,7 @@ void homo::Grid::lexistencil2matlab(const std::string& name)
 					continue;
 				}
 				int nid = npos[0] + npos[1] * (cellReso[0] + 1) + npos[2] * (cellReso[0] + 1) * (cellReso[1] + 1);
-				trips.emplace_back(k * 3 + j / 3, nid * 3 + j % 3, kij[k]);
+				trips.emplace_back(k * 3 + j / 3, nid * 3 + j % 3, kij[k][j % 3][j / 3]);
 			}
 		}
 	}
@@ -903,7 +919,8 @@ Eigen::SparseMatrix<double> homo::Grid::stencil2matrix(bool removePeriodDof /*= 
 	}
 	
 	K.resize(ndof, ndof);
-	std::vector<float> kij(n_gsvertices());
+	//std::vector<float> kij(n_gsvertices());
+	std::vector<glm::mat3> kij(n_gsvertices());
 	using trip = Eigen::Triplet<double>;
 	std::vector<trip> trips;
 	std::vector<VertexFlags> vflags(n_gsvertices());
@@ -922,8 +939,9 @@ Eigen::SparseMatrix<double> homo::Grid::stencil2matrix(bool removePeriodDof /*= 
 	if (!is_root) {
 		for (int i = 0; i < 27; i++) {
 			int noff[3] = { i % 3 - 1, i / 3 % 3 - 1, i / 9 - 1 };
+			cudaMemcpy(kij.data(), stencil_g[i], sizeof(glm::mat3) * n_gsvertices(), cudaMemcpyDeviceToHost);
 			for (int j = 0; j < 9; j++) {
-				cudaMemcpy(kij.data(), stencil_g[i][j], sizeof(float) * n_gsvertices(), cudaMemcpyDeviceToHost);
+				//cudaMemcpy(kij.data(), stencil_g[i][j], sizeof(float) * n_gsvertices(), cudaMemcpyDeviceToHost);
 				for (int k = 0; k < n_gsvertices(); k++) {
 					if (vflags[k].is_fiction() || vflags[k].is_period_padding() /*|| vflags[k].is_max_boundary()*/) continue;
 					//int gscolor = vflags[k].get_gscolor();
@@ -957,7 +975,7 @@ Eigen::SparseMatrix<double> homo::Grid::stencil2matrix(bool removePeriodDof /*= 
 							oldvpos[0], oldvpos[1], oldvpos[2],
 							noff[0], noff[1], noff[2]);
 					}
-					trips.emplace_back(vid * 3 + j / 3, neiid * 3 + j % 3, kij[k]);
+					trips.emplace_back(vid * 3 + j / 3, neiid * 3 + j % 3, kij[k][j % 3][j / 3]);
 				}
 			}
 		}
