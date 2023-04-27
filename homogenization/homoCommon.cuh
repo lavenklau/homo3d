@@ -19,15 +19,15 @@ struct Lame {
 	}
 };
 
-extern __constant__ double* gU[3];
-extern __constant__ double* gF[3];
-extern __constant__ double* gR[3];
-extern __constant__ double* gUfine[3];
-extern __constant__ double* gFfine[3];
-extern __constant__ double* gRfine[3];
-extern __constant__ double* gUcoarse[3];
-extern __constant__ double* gFcoarse[3];
-extern __constant__ double* gRcoarse[3];
+extern __constant__ float* gU[3];
+extern __constant__ float* gF[3];
+extern __constant__ float* gR[3];
+extern __constant__ float* gUfine[3];
+extern __constant__ float* gFfine[3];
+extern __constant__ float* gRfine[3];
+extern __constant__ float* gUcoarse[3];
+extern __constant__ float* gFcoarse[3];
+extern __constant__ float* gRcoarse[3];
 extern __constant__ float gKE[24][24];
 extern __constant__ double gKEd[24][24];
 extern __constant__ Lame gKLame[24][24];
@@ -57,7 +57,7 @@ extern __constant__ int gGsFineCellEnd[8];
 
 //__constant__ double* guchar[6][3];
 //__constant__ double* gfchar[6][3];
-extern __constant__ double* guchar[3];
+extern __constant__ float* guchar[3];
 
 extern __constant__ float exp_penal[1];
 extern __constant__ float LAM[1];
@@ -144,7 +144,7 @@ struct GridVertexIndex {
 	__device__ bool locate(int vid, int color, volatile int gsVertexEnd[8]) {
 		set_id = color;
 
-		if (set_id == -1) return false;
+		if (set_id < 0 || set_id>7) print_exception;
 
 		org.x = set_id % 2;
 		org.y = set_id / 2 % 2;
@@ -278,14 +278,18 @@ struct GridVertexIndex {
 			gsPos.y * 2 + org.y + id / 2 % 2 - 1,
 			gsPos.z * 2 + org.z + id / 4 - 1
 		};
-		int egspos[3] = { cellpos[0] / 2, cellpos[1] / 2, cellpos[2] / 2 };
-		int esetid = cellpos[0] % 2 + cellpos[1] % 2 * 2 + cellpos[2] % 2 * 4;
-		int base = esetid == 0 ? 0 : gsCellEnd[esetid - 1];
 		if (cellpos[0] < 0 || cellpos[0] >= cellReso.x + 2 ||
 			cellpos[1] < 0 || cellpos[1] >= cellReso.y + 2 ||
 			cellpos[2] < 0 || cellpos[2] >= cellReso.z + 2) {
 			return { {-1,-1} };
 		}
+		int egspos[3] = { cellpos[0] / 2, cellpos[1] / 2, cellpos[2] / 2 };
+		int esetid = cellpos[0] % 2 + cellpos[1] % 2 * 2 + cellpos[2] % 2 * 4;
+		//if (esetid < 0 || esetid > 7)
+		//	printf("thx = %d, bid = %d, cp = (%d, %d, %d), gsPos = (%d, %d, %d), org = (%d, %d, %d), id = %d\n",
+		//		threadIdx.x, blockIdx.x, cellpos[0], cellpos[1], cellpos[2],
+		//		int(gsPos.x), int(gsPos.y), int(gsPos.z), int(org.x), int(org.y), int(org.z), int(id));
+		int base = esetid == 0 ? 0 : gsCellEnd[esetid - 1];
 		int eid = base +
 			egspos[0] +
 			egspos[1] * gsCellReso[0][esetid] +

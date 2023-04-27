@@ -14,12 +14,12 @@ __global__ void gs_relaxation_otf_kernel_opt(
 	int gs_set, float* rholist,
 	devArray_t<int, 3> gridCellReso,
 	VertexFlags* vflags, CellFlags* eflags,
-	double w = 1.f
+	float w = 1.f
 ) {
 	__shared__ float LM[5];
 	__shared__ float RHO[8][32];
-	__shared__ double sumKeU[3][4][32];
-	__shared__ double sumKs[3][3];
+	__shared__ float sumKeU[3][4][32];
+	__shared__ float sumKs[3][3];
 
 	// load lam and mu 
 	if (threadIdx.x < 5) {
@@ -73,8 +73,8 @@ __global__ void gs_relaxation_otf_kernel_opt(
 		}
 	}
 
-	double KeU[3] = { 0. };
-	double u[3];
+	float KeU[3] = { 0. };
+	float u[3];
 	if (!fiction) {
 		if (warpId == 0) {
 			u[0] = gU[0][ev[0]]; u[1] = gU[1][ev[0]]; u[2] = gU[2][ev[0]];
@@ -399,10 +399,10 @@ __global__ void gs_relaxation_otf_kernel_opt(
 		//KeU[2] += u[0] * (LM[2] * (6.f * RHO[0][laneId] + -6.f * RHO[1][laneId] + 6.f * RHO[2][laneId] + -6.f * RHO[3][laneId] + -6.f * RHO[4][laneId] + 6.f * RHO[5][laneId] + -6.f * RHO[6][laneId] + 6.f * RHO[7][laneId]))
 		//	+ u[1] * (LM[2] * (6.f * RHO[0][laneId] + 6.f * RHO[1][laneId] + -6.f * RHO[2][laneId] + -6.f * RHO[3][laneId] + -6.f * RHO[4][laneId] + -6.f * RHO[5][laneId] + 6.f * RHO[6][laneId] + 6.f * RHO[7][laneId]))
 		//	+ u[2] * (LM[3] * (8.f * RHO[0][laneId] + 8.f * RHO[1][laneId] + 8.f * RHO[2][laneId] + 8.f * RHO[3][laneId] + 8.f * RHO[4][laneId] + 8.f * RHO[5][laneId] + 8.f * RHO[6][laneId] + 8.f * RHO[7][laneId]));
-		double d = LM[3] * 8.f * (RHO[0][laneId] + RHO[1][laneId] + RHO[2][laneId] + RHO[3][laneId] + RHO[4][laneId] + RHO[5][laneId] + RHO[6][laneId] + RHO[7][laneId]);
-		double t1 = LM[2] * (6.f * RHO[0][laneId] + -6.f * RHO[1][laneId] + -6.f * RHO[2][laneId] + 6.f * RHO[3][laneId] + 6.f * RHO[4][laneId] + -6.f * RHO[5][laneId] + -6.f * RHO[6][laneId] + 6.f * RHO[7][laneId]);
-		double t2 = LM[2] * (6.f * RHO[0][laneId] + -6.f * RHO[1][laneId] + 6.f * RHO[2][laneId] + -6.f * RHO[3][laneId] + -6.f * RHO[4][laneId] + 6.f * RHO[5][laneId] + -6.f * RHO[6][laneId] + 6.f * RHO[7][laneId]);
-		double t3 = LM[2] * (6.f * RHO[0][laneId] + 6.f * RHO[1][laneId] + -6.f * RHO[2][laneId] + -6.f * RHO[3][laneId] + -6.f * RHO[4][laneId] + -6.f * RHO[5][laneId] + 6.f * RHO[6][laneId] + 6.f * RHO[7][laneId]);
+		float d = LM[3] * 8.f * (RHO[0][laneId] + RHO[1][laneId] + RHO[2][laneId] + RHO[3][laneId] + RHO[4][laneId] + RHO[5][laneId] + RHO[6][laneId] + RHO[7][laneId]);
+		float t1 = LM[2] * (6.f * RHO[0][laneId] + -6.f * RHO[1][laneId] + -6.f * RHO[2][laneId] + 6.f * RHO[3][laneId] + 6.f * RHO[4][laneId] + -6.f * RHO[5][laneId] + -6.f * RHO[6][laneId] + 6.f * RHO[7][laneId]);
+		float t2 = LM[2] * (6.f * RHO[0][laneId] + -6.f * RHO[1][laneId] + 6.f * RHO[2][laneId] + -6.f * RHO[3][laneId] + -6.f * RHO[4][laneId] + 6.f * RHO[5][laneId] + -6.f * RHO[6][laneId] + 6.f * RHO[7][laneId]);
+		float t3 = LM[2] * (6.f * RHO[0][laneId] + 6.f * RHO[1][laneId] + -6.f * RHO[2][laneId] + -6.f * RHO[3][laneId] + -6.f * RHO[4][laneId] + -6.f * RHO[5][laneId] + 6.f * RHO[6][laneId] + 6.f * RHO[7][laneId]);
 		u[0] = w * (gF[0][ev[13]] - KeU[0] - u[1] * t1 - u[2] * t2) / d + (1. - w) * u[0];
 		u[1] = w * (gF[1][ev[13]] - KeU[1] - u[0] * t1 - u[2] * t3) / d + (1. - w) * u[1];
 		u[2] = w * (gF[2][ev[13]] - KeU[2] - u[0] * t2 - u[1] * t3) / d + (1. - w) * u[2];
@@ -420,7 +420,7 @@ void homo::Grid::gs_relaxation_ex(float w_SOR /*= 1.f*/)
 {
 	if (!is_root) return;
 	// change to 8 bytes bank
-	use8Bytesbank();
+	use4Bytesbank();
 	useGrid_g();
 	devArray_t<int, 3>  gridCellReso{};
 	devArray_t<int, 8>  gsCellEnd{};
@@ -525,8 +525,8 @@ __global__ void update_residual_otf_kernel_opt(
 ) {
 	__shared__ float LM[5];
 	__shared__ float RHO[8][32];
-	__shared__ double sumKeU[3][4][32];
-	__shared__ double sumKs[3][3];
+	__shared__ float sumKeU[3][4][32];
+	__shared__ float sumKs[3][3];
 
 	// load lam and mu 
 	if (threadIdx.x < 5) {
@@ -577,8 +577,8 @@ __global__ void update_residual_otf_kernel_opt(
 		}
 	}
 
-	double KeU[3] = { 0. };
-	double u[3];
+	float KeU[3] = { 0. };
+	float u[3];
 	if (!fiction) {
 		if (warpId == 0) {
 			u[0] = gU[0][ev[0]]; u[1] = gU[1][ev[0]]; u[2] = gU[2][ev[0]];
@@ -892,7 +892,7 @@ __global__ void update_residual_otf_kernel_opt(
 	if (warpId < 1 && !fiction) {
 		for (int i = 0; i < 3; i++) KeU[i] = sumKeU[i][warpId][laneId] + sumKeU[i][warpId + 1][laneId];
 
-		double r[3];
+		float r[3];
 		r[0] = gF[0][ev[13]] - KeU[0]; r[1] = gF[1][ev[13]] - KeU[1]; r[2] = gF[2][ev[13]] - KeU[2];
 
 		//if (vflag.is_dirichlet_boundary()) { r[0] = 0; r[1] = 0; r[2] = 0; }

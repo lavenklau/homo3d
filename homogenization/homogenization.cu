@@ -15,9 +15,9 @@ void homo::Homogenization::Sensitivity(int i, int j, float* sens)
 
 __global__ void elasticMatrix_kernel_wise(
 	int nv, int iStrain, int jStrain,
-	devArray_t<double*, 3> ui, devArray_t<double*, 3> uj,
+	devArray_t<float*, 3> ui, devArray_t<float*, 3> uj,
 	float* rholist, VertexFlags* vflags, CellFlags* eflags,
-	double* elementCompliance
+	float* elementCompliance
 ) {
 #if USE_LAME_MATRIX
 	__shared__ Lame KLAME[24][24];
@@ -50,10 +50,10 @@ __global__ void elasticMatrix_kernel_wise(
 		if (!eflag.is_fiction() && !eflag.is_period_padding()) {
 			float prho = powf(rholist[elementId], exp_penal[0]);
 			//float prho = rholist[elementId];
-			double c = 0;
+			float c = 0;
 			//int neighVid[8];
-			double u[8][3];
-			double v[8][3];
+			float u[8][3];
+			float v[8][3];
 			for (int i = 0; i < 8; i++) {
 				int id = i % 2 + i / 2 % 2 * 3 + i / 4 * 9;
 				int neighVid = indexer.neighVertex(id, gGsVertexEnd, gGsVertexReso).getId();
@@ -67,9 +67,9 @@ __global__ void elasticMatrix_kernel_wise(
 				}
 			}
 #if USE_LAME_MATRIX
-			double celam = 0, cemu = 0;
+			float celam = 0, cemu = 0;
 #else
-			double ce = 0;
+			float ce = 0;
 #endif
 			for (int ki = 0; ki < 8; ki++) {
 				int kirow = ki * 3;
@@ -100,7 +100,7 @@ __global__ void elasticMatrix_kernel_wise(
 
 __global__ void elasticMatrix_kernel_wise_opt(
 	int nv, int iStrain, int jStrain,
-	devArray_t<double*, 3> ui, devArray_t<double*, 3> uj,
+	devArray_t<float*, 3> ui, devArray_t<float*, 3> uj,
 	float* rholist, VertexFlags* vflags, CellFlags* eflags,
 	float* elementCompliance
 ) {
@@ -347,13 +347,13 @@ double homo::Homogenization::elasticMatrix(int i, int j)
 	grid->useGrid_g();
 	size_t grid_size, block_size;
 	make_kernel_param(&grid_size, &block_size, grid->n_gsvertices(), 256);
-	auto Cebuffer = getTempPool().getBuffer(grid->n_gscells() * sizeof(double));
-	double* Ce = Cebuffer.template data<double>();
-	init_array(Ce, 0., grid->n_gscells());
+	auto Cebuffer = getTempPool().getBuffer(grid->n_gscells() * sizeof(float));
+	float* Ce = Cebuffer.template data<float>();
+	init_array(Ce, 0.f, grid->n_gscells());
 	auto rholist = grid->rho_g;
 	int nv = grid->n_gsvertices();
-	devArray_t<double*, 3> ui{ grid->u_g[0], grid->u_g[1], grid->u_g[2] };
-	devArray_t<double*, 3> uj{ grid->uchar_g[0], grid->uchar_g[1], grid->uchar_g[2] };
+	devArray_t<float*, 3> ui{ grid->u_g[0], grid->u_g[1], grid->u_g[2] };
+	devArray_t<float*, 3> uj{ grid->uchar_g[0], grid->uchar_g[1], grid->uchar_g[2] };
 	grid->v3_upload(ui.data(), grid->uchar_h[i]);
 	grid->v3_upload(uj.data(), grid->uchar_h[j]);
 	auto vflags = grid->vertflag;
@@ -366,20 +366,20 @@ double homo::Homogenization::elasticMatrix(int i, int j)
 	if (0) {
 		char buf[100];
 		sprintf_s(buf, "Ce%d%d", i, j);
-		std::vector<double> cehost(grid->n_gscells());
-		cudaMemcpy(cehost.data(), Ce, sizeof(double) * grid->n_gscells(), cudaMemcpyDeviceToHost);
+		std::vector<float> cehost(grid->n_gscells());
+		cudaMemcpy(cehost.data(), Ce, sizeof(float) * grid->n_gscells(), cudaMemcpyDeviceToHost);
 		grid->array2matlab(buf, cehost.data(), grid->n_gscells());
 	}
 
-	double C = dump_array_sum(Ce, grid->n_gscells());
+	float C = dump_array_sum(Ce, grid->n_gscells());
 	return C;
 }
 
 // 8 warps
 template<int N, int BlockSize = 256>
 __global__ void fillHalfVertices_kernel(
-	devArray_t<devArray_t<double*, 3>, N> uchar,
-	devArray_t<devArray_t<double*, 3>, N> dst,
+	devArray_t<devArray_t<float*, 3>, N> uchar,
+	devArray_t<devArray_t<float*, 3>, N> dst,
 	devArray_t<int, 8> validGsEnd,
 	int whichhalf
 ) {
@@ -412,9 +412,9 @@ __global__ void fillHalfVertices_kernel(
 	int gsid = lexi2gs(vpos, gGsVertexReso, gGsVertexEnd);
 	int nvhalf = (ereso[0] + 1) * (ereso[1] + 1) * (ereso[0] / 2 + 1);
 	// Note : so vertices vector should allocate more memory for this  
-	int alignedOffset = round(nvhalf * sizeof(double), 512) / sizeof(double);
+	int alignedOffset = round(nvhalf * sizeof(float), 512) / sizeof(float);
 	for (int i = 0; i < N; i++) {
-		double* base[3] = { dst[i][0], dst[i][1], dst[i][2] };
+		float* base[3] = { dst[i][0], dst[i][1], dst[i][2] };
 		if (whichhalf == 1) {
 			base[0] += alignedOffset; base[1] += alignedOffset; base[2] += alignedOffset;
 		}
@@ -427,7 +427,7 @@ __global__ void fillHalfVertices_kernel(
 template<int BlockSize = 256>
 __global__ void fillTotalVertices_kernel(
 	int nv, VertexFlags* vflags,
-	devArray_t<devArray_t<double*, 3>, 6> uchar,
+	devArray_t<devArray_t<float*, 3>, 6> uchar,
 	devArray_t<devArray_t<float2*, 3>, 3> dst
 ) {
 	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -465,18 +465,19 @@ void homo::Homogenization::elasticMatrix(double C[6][6])
 	for (int i = 0; i < 6; i++) {
 		grid->useFchar(i);
 		grid->useUchar(i);
+		grid->translateForce(2, grid->u_g);
 		mg_->solveEquation(config.femRelThres);
 		grid->setUchar(i, grid->getDisplacement());
 	}
 
-	double vol = grid->n_cells();
+	float vol = grid->n_cells();
 
 	printf("n_cell = %d\n", grid->n_cells());
 
 	use4Bytesbank();
 	grid->useGrid_g();
 	if (config.useManagedMemory) {
-		devArray_t<devArray_t<double*, 3>, 6> ucharlist;
+		devArray_t<devArray_t<float*, 3>, 6> ucharlist;
 		for (int i = 0; i < 6; i++) {
 			for (int j = 0; j < 3; j++) {
 				ucharlist[i][j] = grid->uchar_h[i][j];
@@ -521,9 +522,9 @@ void homo::Homogenization::elasticMatrix(double C[6][6])
 		for (int i = 0; i < 6; i++) { for (int j = 0; j < i; j++) { C[i][j] = C[j][i]; } }
 
 		for (int i = 0; i < 3; i++) {
-			cudaMemset(grid->u_g[i], 0, nv * sizeof(double));
-			cudaMemset(grid->r_g[i], 0, nv * sizeof(double));
-			cudaMemset(grid->f_g[i], 0, nv * sizeof(double));
+			cudaMemset(grid->u_g[i], 0, nv * sizeof(float));
+			cudaMemset(grid->r_g[i], 0, nv * sizeof(float));
+			cudaMemset(grid->f_g[i], 0, nv * sizeof(float));
 		}
 		cudaDeviceSynchronize();
 		cuda_error_check;
@@ -539,10 +540,10 @@ void homo::Homogenization::elasticMatrix(double C[6][6])
 		auto vflags = grid->vertflag;
 		auto eflags = grid->cellflag;
 		for (int i = 0; i < 6; i++) {
-			devArray_t<double*, 3> ui{ grid->u_g[0], grid->u_g[1], grid->u_g[2] };
+			devArray_t<float*, 3> ui{ grid->u_g[0], grid->u_g[1], grid->u_g[2] };
 			grid->v3_upload(ui.data(), grid->uchar_h[i]);
 			for (int j = i; j < 6; j++) {
-				devArray_t<double*, 3> uj{ grid->uchar_g[0], grid->uchar_g[1], grid->uchar_g[2] };
+				devArray_t<float*, 3> uj{ grid->uchar_g[0], grid->uchar_g[1], grid->uchar_g[2] };
 				grid->v3_upload(uj.data(), grid->uchar_h[j]);
 				//_TIC("ematopt");
 				elasticMatrix_kernel_wise_opt << <grid_size, block_size >> > (nv, i, j, ui, uj, rholist, vflags, eflags, Ce);
@@ -568,7 +569,7 @@ void homo::Homogenization::elasticMatrix(double C[6][6])
 __global__ void Sensitivity_kernel_wise_opt_2(
 	int nv, VertexFlags* vflags, CellFlags* eflags,
 	int iStrain, int jStrain,
-	devArray_t<double*, 3> ui, devArray_t<double*, 3> uj,
+	devArray_t<float*, 3> ui, devArray_t<float*, 3> uj,
 	float* rholist,
 	devArray_t<devArray_t<float, 6>, 6> dc,
 	float* sens, float volume,
@@ -867,10 +868,10 @@ void homo::Homogenization::Sensitivity(float dC[6][6], float* sens, int pitchT, 
 	make_kernel_param(&grid_size, &block_size, nv, 256);
 	if (!config.useManagedMemory) {
 		for (int iStrain = 0; iStrain < 6; iStrain++) {
-			devArray_t<double*, 3> ui{ grid->u_g[0], grid->u_g[1], grid->u_g[2] };
+			devArray_t<float*, 3> ui{ grid->u_g[0], grid->u_g[1], grid->u_g[2] };
 			grid->v3_upload(ui.data(), grid->uchar_h[iStrain]);
 			for (int jStrain = iStrain; jStrain < 6; jStrain++) {
-				devArray_t<double*, 3> uj{ grid->uchar_g[0], grid->uchar_g[1], grid->uchar_g[2] };
+				devArray_t<float*, 3> uj{ grid->uchar_g[0], grid->uchar_g[1], grid->uchar_g[2] };
 				grid->v3_upload(uj.data(), grid->uchar_h[jStrain]);
 #if 0
 #else
@@ -887,7 +888,7 @@ void homo::Homogenization::Sensitivity(float dC[6][6], float* sens, int pitchT, 
 	}
 	else {
 		printf("Sensitivity analysis using managed memory...\n");
-		devArray_t<devArray_t<double*, 3>, 6> uchar;
+		devArray_t<devArray_t<float*, 3>, 6> uchar;
 		for (int i = 0; i < 6; i++) {
 			for (int j = 0; j < 3; j++) {
 				uchar[i][j] = grid->uchar_h[i][j];
@@ -913,9 +914,9 @@ void homo::Homogenization::Sensitivity(float dC[6][6], float* sens, int pitchT, 
 	cuda_error_check;
 
 	for (int i = 0; i < 3; i++) {
-		cudaMemset(grid->u_g[i], 0, nv * sizeof(double));
-		cudaMemset(grid->r_g[i], 0, nv * sizeof(double));
-		cudaMemset(grid->f_g[i], 0, nv * sizeof(double));
+		cudaMemset(grid->u_g[i], 0, nv * sizeof(float));
+		cudaMemset(grid->r_g[i], 0, nv * sizeof(float));
+		cudaMemset(grid->f_g[i], 0, nv * sizeof(float));
 	}
 	cudaDeviceSynchronize();
 	cuda_error_check;

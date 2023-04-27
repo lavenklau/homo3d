@@ -200,11 +200,11 @@ size_t Grid::allocateBuffer(int nv, int ne)
 	size_t total = 0;
 	// allocate FEM vectors
 	for (int i = 0; i < 3; i++) {
-		u_g[i] = getMem().addBuffer(homoutils::formated("%s_u_%d", getName().c_str(), i), nv * sizeof(double))->data<double>();
-		f_g[i] = getMem().addBuffer(homoutils::formated("%s_f_%d", getName().c_str(), i), nv * sizeof(double))->data<double>();
-		r_g[i] = getMem().addBuffer(homoutils::formated("%s_r_%d", getName().c_str(), i), nv * sizeof(double))->data<double>();
+		u_g[i] = getMem().addBuffer(homoutils::formated("%s_u_%d", getName().c_str(), i), nv * sizeof(float) * 2)->data<float>();
+		f_g[i] = getMem().addBuffer(homoutils::formated("%s_f_%d", getName().c_str(), i), nv * sizeof(float) * 2)->data<float>();
+		r_g[i] = getMem().addBuffer(homoutils::formated("%s_r_%d", getName().c_str(), i), nv * sizeof(float) * 2)->data<float>();
 	}
-	total += nv * 9 * sizeof(double);
+	total += nv * 9 * sizeof(float);
 	// allocate stencil buffer
 	if (!is_root) {
 		for (int i = 0; i < 27; i++) {
@@ -220,7 +220,7 @@ size_t Grid::allocateBuffer(int nv, int ne)
 		for (int j = 0; j < 3; j++) {
 			//fchar_g[i][j] = getMem().addBuffer(homoutils::formated("%s_fc_%d_%d", getName().c_str(), i, j), nv * sizeof(double))->data<double>();
 			//uchar_g[i][j] = getMem().addBuffer(homoutils::formated("%s_uc_%d_%d", getName().c_str(), i, j), nv * sizeof(double))->data<double>();
-			uchar_g[j] = getMem().addBuffer(homoutils::formated("%s_uc_%d", getName().c_str(), j), nv * sizeof(double))->data<double>();
+			uchar_g[j] = getMem().addBuffer(homoutils::formated("%s_uc_%d", getName().c_str(), j), nv * sizeof(float))->data<float>();
 		}
 	}
 
@@ -229,20 +229,20 @@ size_t Grid::allocateBuffer(int nv, int ne)
 	if (gridConfig.enableManagedMem) {
 		for (int i = 0; i < 6; i++) {
 			for (int j = 0; j < 3; j++) {
-				uchar_h[i][j] = getMem().addBuffer(homoutils::formated("%s_uchost_%d_%d", getName().c_str(), i, j), nv * sizeof(double), Managed)->data<double>();
+				uchar_h[i][j] = getMem().addBuffer(homoutils::formated("%s_uchost_%d_%d", getName().c_str(), i, j), nv * sizeof(float), Managed)->data<float>();
 			}
 			v3_reset(uchar_h[i], nv);
 		}
 	} else {
 		for (int i = 0; i < 6; i++) {
 			for (int j = 0; j < 3; j++) {
-				uchar_h[i][j] = getMem().addBuffer(homoutils::formated("%s_uchost_%d_%d", getName().c_str(), i, j), nv * sizeof(double), Hostheap)->data<double>();
-				memset(uchar_h[i][j], 0, sizeof(double) * nv);
+				uchar_h[i][j] = getMem().addBuffer(homoutils::formated("%s_uchost_%d_%d", getName().c_str(), i, j), nv * sizeof(float), Hostheap)->data<float>();
+				memset(uchar_h[i][j], 0, sizeof(float) * nv);
 			}
 		}
 	}
 
-	total += nv * sizeof(double) * 3;
+	total += nv * sizeof(float) * 3;
 	// allocate flag buffer
 	vertflag = getMem().addBuffer<VertexFlags>(homoutils::formated("%s_vflag", getName().c_str()), nv)->data<VertexFlags>();
 	cellflag = getMem().addBuffer<CellFlags>(homoutils::formated("%s_cflag", getName().c_str()), ne)->data<CellFlags>();
@@ -268,17 +268,17 @@ size_t Grid::allocateBuffer(int nv, int ne)
 //	}
 //}
 
-void Grid::setForce(double* f[3])
+void Grid::setForce(float* f[3])
 {
 	v3_copy(f_g, f);
 }
 
-double** Grid::getForce(void)
+float** Grid::getForce(void)
 {
 	return f_g;
 }
 
-double** Grid::getDisplacement(void)
+float** Grid::getDisplacement(void)
 {
 	return u_g;
 }
@@ -315,7 +315,7 @@ void Grid::useFchar(int k)
 	if (0) {
 		char buf[100];
 		sprintf_s(buf, "./fchar%d", k);
-		v3_write(buf, f_g);
+		v3_write(buf, f_g, true);
 	}
 }
 
@@ -334,7 +334,7 @@ void Grid::reset_force(void)
 	v3_reset(f_g);
 }
 
-void Grid::setUchar(int k, double** uchar)
+void Grid::setUchar(int k, float** uchar)
 {
 	//v3_copy(uchar_g[k], uchar);
 	v3_download(uchar_h[k], uchar);
@@ -344,7 +344,7 @@ static Eigen::Matrix<double, -1, -1> transBase;
 
 bool homo::Grid::solveHostEquation(void)
 {
-	auto b = v3_toMatrix(f_g, true);
+	Eigen::VectorXd b = v3_toMatrix(f_g, true).cast<double>();
 #if 1
 	// remove translation
 	b = b - transBase * (transBase.transpose() * b);
@@ -368,7 +368,7 @@ bool homo::Grid::solveHostEquation(void)
 	x = x - transBase * (transBase.transpose() * x);
 	eigen2ConnectedMatlab("x", x);
 
-	v3_fromMatrix(u_g, x, false);
+	v3_fromMatrix(u_g, x.cast<float>(), false);
 
 	return true;
 }
@@ -502,7 +502,7 @@ float homo::Grid::diagPrecondition(float strength)
 	return strength;
 }
 
-double** homo::Grid::getResidual(void)
+float** homo::Grid::getResidual(void)
 {
 	return r_g;
 }
@@ -670,17 +670,17 @@ void homo::Grid::readDisplacement(const std::string& fname)
 	v3_read(fname, u_g);
 }
 
-void homo::Grid::v3_upload(double* dev[3], double* hst[3])
+void homo::Grid::v3_upload(float* dev[3], float* hst[3])
 {
 	for (int i = 0; i < 3; i++) {
-		cudaMemcpy(dev[i], hst[i], sizeof(double) * n_gsvertices(), cudaMemcpyHostToDevice);
+		cudaMemcpy(dev[i], hst[i], sizeof(float) * n_gsvertices(), cudaMemcpyHostToDevice);
 	}
 }
 
-void homo::Grid::v3_download(double* hst[3], double* dev[3])
+void homo::Grid::v3_download(float* hst[3], float* dev[3])
 {
 	for (int i = 0; i < 3; i++) {
-		cudaMemcpy(hst[i], dev[i], sizeof(double) * n_gsvertices(), cudaMemcpyDeviceToHost);
+		cudaMemcpy(hst[i], dev[i], sizeof(float) * n_gsvertices(), cudaMemcpyDeviceToHost);
 	}
 }
 
@@ -718,18 +718,26 @@ void homo::Grid::v3_toMatlab(const std::string& mname, float* v[3], int len /*= 
 
 }
 
-void homo::Grid::v3_write(const std::string& filename, double* v[3], int len /*= -1*/)
+void homo::Grid::v3_write(const std::string& filename, float* v[3], int len /*= -1*/)
 {
 	if (len == -1) len = n_gsvertices();
-	std::vector<double> arr[3];
+	std::vector<float> arr[3];
 	for (int i = 0; i < 3; i++) {
 		arr[i].resize(len);
-		cudaMemcpy(arr[i].data(), v[i], sizeof(double) * len, cudaMemcpyDeviceToHost);
+		cudaMemcpy(arr[i].data(), v[i], sizeof(float) * len, cudaMemcpyDeviceToHost);
 	}
 	homoutils::writeVectors(filename, arr);
 }
 
-void homo::Grid::v3_read(const std::string& filename, double* v[3])
+void homo::Grid::v3_write(const std::string& filename, float* v[3], bool removePeriodDof /*= false*/) {
+	auto b = v3_toMatrix(v, removePeriodDof);
+	std::ofstream ofs(filename, std::ios::binary);
+	ofs.write((const char*)b.data(), b.size() * sizeof(float));
+	ofs.close();
+	return;
+}
+
+void homo::Grid::v3_read(const std::string& filename, float* v[3])
 {
 	std::ifstream ifs(filename, std::ios::binary | std::ios::ate);
 	if (!ifs) {
@@ -743,7 +751,7 @@ void homo::Grid::v3_read(const std::string& filename, double* v[3])
 		exit(-1);
 	}
 	ifs.seekg(0);
-	std::vector<double> u[3];
+	std::vector<float> u[3];
 	for (int i = 0; i < n_gsvertices(); i++) {
 		double u_vert[3];
 		ifs.read((char*)u_vert, sizeof(u_vert));
@@ -751,12 +759,12 @@ void homo::Grid::v3_read(const std::string& filename, double* v[3])
 	}
 	ifs.close();
 	for (int i = 0; i < 3; i++) {
-		cudaMemcpy(v[i], u[i].data(), sizeof(double) * n_gsvertices(), cudaMemcpyHostToDevice);
+		cudaMemcpy(v[i], u[i].data(), sizeof(float) * n_gsvertices(), cudaMemcpyHostToDevice);
 	}
 
 }
 
-Eigen::Matrix<double, -1, 1> homo::Grid::v3_toMatrix(double* u[3], bool removePeriodDof /*= false*/)
+Eigen::Matrix<float, -1, 1> homo::Grid::v3_toMatrix(float* u[3], bool removePeriodDof /*= false*/)
 {
 	int nv;
 	if (removePeriodDof) {
@@ -764,13 +772,13 @@ Eigen::Matrix<double, -1, 1> homo::Grid::v3_toMatrix(double* u[3], bool removePe
 	} else {
 		nv = (cellReso[0] + 1) * (cellReso[1] + 1) * (cellReso[2] + 1);
 	}
-	Eigen::Matrix<double, -1, 1> b(nv * 3, 1);
+	Eigen::Matrix<float, -1, 1> b(nv * 3, 1);
 	b.fill(0);
-	std::vector<double> vhost(n_gsvertices());
+	std::vector<float> vhost(n_gsvertices());
 	std::vector<VertexFlags> vflags(n_gsvertices());
 	cudaMemcpy(vflags.data(), vertflag, sizeof(VertexFlags) * n_gsvertices(), cudaMemcpyDeviceToHost);
 	for (int i = 0; i < 3; i++) {
-		cudaMemcpy(vhost.data(), u[i], sizeof(double) * n_gsvertices(), cudaMemcpyDeviceToHost);
+		cudaMemcpy(vhost.data(), u[i], sizeof(float) * n_gsvertices(), cudaMemcpyDeviceToHost);
 		for (int k = 0; k < n_gsvertices(); k++) {
 			if (vflags[k].is_fiction() || vflags[k].is_period_padding()) continue;
 			//int pos[3];
@@ -781,10 +789,10 @@ Eigen::Matrix<double, -1, 1> homo::Grid::v3_toMatrix(double* u[3], bool removePe
 	return b;
 }
 
-void homo::Grid::v3_fromMatrix(double* u[3], const Eigen::Matrix<double, -1, 1>& b, bool hasPeriodDof /*= false*/)
+void homo::Grid::v3_fromMatrix(float* u[3], const Eigen::Matrix<float, -1, 1>& b, bool hasPeriodDof /*= false*/)
 {
 	for (int i = 0; i < 3; i++) {
-		std::vector<double> ui(n_gsvertices());
+		std::vector<float> ui(n_gsvertices());
 		std::fill(ui.begin(), ui.end(), 0.);
 		int nvlex;
 		if (hasPeriodDof) {
@@ -796,7 +804,7 @@ void homo::Grid::v3_fromMatrix(double* u[3], const Eigen::Matrix<double, -1, 1>&
 			int gsid = vlexid2gsid(k, hasPeriodDof);
 			ui[gsid] = b[k * 3 + i];
 		}
-		cudaMemcpy(u[i], ui.data(), sizeof(double) * n_gsvertices(), cudaMemcpyHostToDevice);
+		cudaMemcpy(u[i], ui.data(), sizeof(float) * n_gsvertices(), cudaMemcpyHostToDevice);
 	}
 	enforce_period_vertex(u, false);
 	pad_vertex_data(u);
@@ -1132,7 +1140,7 @@ int homo::Grid::vlexid2gsid(int lexid, bool hasPeriodDof /*= false*/)
 	return gsid;
 }
 
-void homo::Grid::enforce_period_boundary(double* v[3], bool additive /*= false*/)
+void homo::Grid::enforce_period_boundary(float* v[3], bool additive /*= false*/)
 {
 	//if (additive) { throw std::runtime_error("additive should never be set"); }
 	enforce_period_vertex(v, additive);
@@ -1166,19 +1174,19 @@ void homo::Grid::test_gs_relaxation(void)
 		if (itn % 5 == 0) {
 			char buf[100];
 			sprintf_s(buf, "res%d", itn);
-			v3_write(getPath(buf), r_g);
+			v3_write(getPath(buf), r_g, true);
 		}
 		double rel_res = relative_residual();
 		printf("rel_res = %6.4f%%\n", rel_res * 100);
 	}
 	exit(0);
 }
-void homo::Grid::translateForce(int type_, double* v[3]) {
-	double t_f[3];
+void homo::Grid::translateForce(int type_, float* v[3]) {
+	float t_f[3];
 	if (type_ == 1) {
 		int gsid = vlexid2gsid(0, true);
 		for (int i = 0; i < 3; i++)
-			cudaMemcpy(t_f + i, v[i] + gsid, sizeof(double), cudaMemcpyDeviceToHost);
+			cudaMemcpy(t_f + i, v[i] + gsid, sizeof(float), cudaMemcpyDeviceToHost);
 	} else if (type_ == 2) {
 		v3_average(v, t_f, true);
 	}

@@ -122,13 +122,13 @@ struct Grid {
 	//float* stencil_g[27][9];
 	glm::mat3* stencil_g[27];
 
-	double* u_g[3];
-	double* f_g[3];
-	double* r_g[3];
+	float* u_g[3];
+	float* f_g[3];
+	float* r_g[3];
 	//double* uchar_g[6][3];
 	//double* fchar_g[6][3];
-	double* uchar_g[3];
-	double* uchar_h[6][3];
+	float* uchar_g[3];
+	float* uchar_h[6][3];
 	float* rho_g;
 	VertexFlags* vertflag;
 	CellFlags* cellflag;
@@ -243,13 +243,13 @@ struct Grid {
 
 	//void update_uchar(void);
 
-	void setForce(double* f[3]);
+	void setForce(float* f[3]);
 
-	double** getForce(void);
+	float** getForce(void);
 
-	double** getDisplacement(void);
+	float** getDisplacement(void);
 
-	double** getResidual(void);
+	float** getResidual(void);
 
 	//double** getFchar(int k);
 
@@ -259,7 +259,7 @@ struct Grid {
 
 	void useUchar(int k);
 
-	void setUchar(int k, double** uchar);
+	void setUchar(int k, float** uchar);
 
 	void reset_displacement(void);
 
@@ -267,7 +267,7 @@ struct Grid {
 
 	void reset_force(void);
 
-	void translateForce(int type_, double* v[3]); // 1. zero dirichlet force; 2. zero global translation
+	void translateForce(int type_, float* v[3]); // 1. zero dirichlet force; 2. zero global translation
 
 	void reset_density(float rho);
 
@@ -310,30 +310,31 @@ struct Grid {
 
 	std::vector<CellFlags> getCellflags(void);
 
-	void setMacroStrainDisplacement(int i, double* u[3]);
+	void setMacroStrainDisplacement(int i, float* u[3]);
 
-	void v3_reset(double* v[3], int len = -1);
-	void v3_const(double* v[3], const double v_const[3]);
-	void v3_rand(double* v[3], double low, double upp, int len = -1);
-	double v3_norm(double* v[3], bool removePeriodDof = false, int len = -1);
-	double v3_diffnorm(double* v[3], double* u[3], int len = -1);
-	void v3_copy(double* dst[3], double* src[3], int len = -1);
-	void v3_upload(double* dev[3], double* hst[3]);
-	void v3_download(double* hst[3], double* dev[3]);
-	void v3_removeT(double* u[3], double tHost[3]);
-	void v3_linear(double a1, double* v1[3], double a2, double* v2[3], double* v[3], int len = -1);
+	void v3_reset(float* v[3], int len = -1);
+	void v3_const(float* v[3], const float v_const[3]);
+	void v3_rand(float* v[3], float low, float upp, int len = -1);
+	float v3_norm(float* v[3], bool removePeriodDof = false, int len = -1);
+	float v3_diffnorm(float* v[3], float* u[3], int len = -1);
+	void v3_copy(float* dst[3], float* src[3], int len = -1);
+	void v3_upload(float* dev[3], float* hst[3]);
+	void v3_download(float* hst[3], float* dev[3]);
+	void v3_removeT(float* u[3], float tHost[3]);
+	void v3_linear(float a1, float* v1[3], float a2, float* v2[3], float* v[3], int len = -1);
 	void v3_toMatlab(const std::string& mname, double* v[3], int len = -1, bool removePeriodDof = false);
 	void v3_toMatlab(const std::string& mname, float* v[3], int len = -1);
-	void v3_write(const std::string& filename, double* v[3], int len = -1);
-	void v3_read(const std::string& filename, double* v[3]);
-	void v3_wave(double* u[3], const std::array<double, 3>& radi);
-	void v3_create(double* v[3], int len = -1);
-	void v3_destroy(double* v[3]);
-	double v3_dot(double* v[3], double* u[3], bool removePeriodDof = false, int len = -1);
-	Eigen::Matrix<double, -1, 1> v3_toMatrix(double* u[3], bool removePeriodDof = false);
-	void v3_fromMatrix(double* u[3], const Eigen::Matrix<double, -1, 1>& b, bool hasPeriodDof = false);
-	void v3_stencilOnLeft(double* v[3], double* Kv[3]);
-	void v3_average(double* v[3], double vMean[3], bool removePeriodDof = false);
+	void v3_write(const std::string& filename, float* v[3], int len = -1);
+	void v3_write(const std::string& filename, float* v[3], bool removePeriodDof = false);
+	void v3_read(const std::string& filename, float* v[3]);
+	void v3_wave(float* u[3], const std::array<float, 3>& radi);
+	void v3_create(float* v[3], int len = -1);
+	void v3_destroy(float* v[3]);
+	float v3_dot(float* v[3], float* u[3], bool removePeriodDof = false, int len = -1);
+	Eigen::Matrix<float, -1, 1> v3_toMatrix(float* u[3], bool removePeriodDof = false);
+	void v3_fromMatrix(float* u[3], const Eigen::Matrix<float, -1, 1>& b, bool hasPeriodDof = false);
+	void v3_stencilOnLeft(float* v[3], float* Kv[3]);
+	void v3_average(float* v[3], float vMean[3], bool removePeriodDof = false);
 
 	void array2matlab(const std::string& matname, int* hostdata, int len);
 	void array2matlab(const std::string& matname, double* hostdata, int len);
@@ -342,7 +343,7 @@ struct Grid {
 	double relative_residual(void);
 	double residual(void);
 	//double compliance(double* displacement[3]);
-	double compliance(double* u[3], double* v[3]);
+	double compliance(float* u[3], float* v[3]);
 
 	// map lexid to gsid
 	std::vector<int> getVertexLexidMap(void);
@@ -366,8 +367,8 @@ struct Grid {
 	void lexiStencil2gsorder(void);
 	void enforce_period_stencil(bool additive);
 	//void gather_boundary_force(double* f[3]);
-	void enforce_period_boundary(double* v[3], bool additive = false);
-	void enforce_dirichlet_boundary(double* v[3]);
+	void enforce_period_boundary(float* v[3], bool additive = false);
+	void enforce_dirichlet_boundary(float* v[3]);
 	void enforce_dirichlet_stencil(void);
 	void enforce_period_vertex(double* v[3], bool additive = false);
 	void enforce_period_vertex(float* v[3], bool additive = false);

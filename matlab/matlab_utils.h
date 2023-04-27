@@ -8,7 +8,7 @@
 #include <Eigen/Sparse>
 #include "platform_spec.h"
 
-// #define ENABLE_MATLAB
+//#define ENABLE_MATLAB
 
 #pragma warning(disable:4244)
 //#define MATLAB_DEFAULT_RELEASE R2017b
