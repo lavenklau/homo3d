@@ -1313,8 +1313,6 @@ __global__ void update_residual_otf_kernel_1(
 	
 	float KeU[3] = { 0. };
 
-	if (!fiction) gR[0][vid] = KE[0][0];
-
 	int elementId = -1;
 	if (!fiction) elementId = indexer.neighElement(warpId, gsCellEnd, gsCellReso).getId();
 	int vselfrow = (7 - warpId) * 3;
