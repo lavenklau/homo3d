@@ -3,7 +3,7 @@
 #include "Eigen/IterativeLinearSolvers"
 #include "matlab/matlab_utils.h"
 #include "tictoc.h"
-#include "utils"
+#include "utils.h"
 
 std::shared_ptr<homo::Grid> homo::MG::getRootGrid(void)
 {

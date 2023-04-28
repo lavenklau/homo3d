@@ -1288,11 +1288,11 @@ __global__ void update_residual_otf_kernel_1(
 
 	bool fiction = false;
 
-	fiction |= vid >= nv;
+	fiction = fiction || vid >= nv;
 	VertexFlags vflag;
 	if (!fiction) {
 		vflag = vflags[vid];
-		fiction |= vflag.is_fiction();
+		fiction = fiction || vflag.is_fiction() || vflag.is_period_padding();
 	}
 	int set_id = vflag.get_gscolor();
 
