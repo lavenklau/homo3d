@@ -24,6 +24,7 @@ DEFINE_double(step, 0.05, "design step for oc");
 DEFINE_double(damp, 0.5, "damp ratio for oc");
 DEFINE_double(relthres, 0.01, "relative residual threshold for FEM");
 DEFINE_int32(maxcoarsereso, 64, "maximal resolution of coarse grid");
+DEFINE_bool(usesym, true, "enable use of symmetry");
 
 void cfg::HomoConfig::parse(int argc, char** argv)
 {
@@ -190,5 +191,7 @@ void cfg::HomoConfig::parse(int argc, char** argv)
 	printf(" = designStep    - - - - - - - - - - - - - - - - - - - %4.2f\n", float(FLAGS_step));
 	printf(" = femRelThres   - - - - - - - - - - - - - - - - - - - %4.2e\n", float(FLAGS_relthres));
 	printf(" = maxCoarseReso - - - - - - - - - - - - - - - - - - - %d\n", FLAGS_maxcoarsereso);
+	printf(" = use symmetry  - - - - - - - - - - - - - - - - - - - %s\n", b2s(FLAGS_usesym));
 	printf(" = input(optional) - - - - - - - - - - - - - - - - - - %s\n", FLAGS_in.c_str());
+
 }

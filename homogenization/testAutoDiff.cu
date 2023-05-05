@@ -305,8 +305,10 @@ void optiBulk(cfg::HomoConfig config, var_tsexp_t<>& rho, Homogenization& hom, e
 		printf("\033[32m\n * Iter %d   obj = %.4e\033[0m\n", iter, val);
 		// check convergence
 		if (criteria.is_converge(iter, val)) { printf("= converged\n"); break; }
-		// make sensitivity symmetry
-		symmetrizeField(rho.diff(), config.sym);
+		if (FLAGS_usesym) {
+			// make sensitivity symmetry
+			symmetrizeField(rho.diff(), config.sym);
+		}
 		// flatten the density and sensitivity tensor to array
 		auto sens = rho.diff().flatten();
 		auto rhoarray = rho.value().flatten();
@@ -318,8 +320,10 @@ void optiBulk(cfg::HomoConfig config, var_tsexp_t<>& rho, Homogenization& hom, e
 		oc.update(sens.data(), rhoarray.data(), config.volRatio);
 		// graft array to tensor
 		rho.rvalue().graft(rhoarray.data());
-		// make density symmetry
-		symmetrizeField(rho.value(), config.sym);
+		if (FLAGS_usesym) {
+			// make density symmetry
+			symmetrizeField(rho.value(), config.sym);
+		}
 		// output temp results
 		logIter(iter, config, rho, sens, Ch, val);
 	}
@@ -356,8 +360,10 @@ void optiShear(cfg::HomoConfig config, var_tsexp_t<>& rho, Homogenization& hom, 
 		printf("\033[32m\n * Iter %d   obj = %.4e\033[0m\n", iter, val);
 		// check convergence
 		if (criteria.is_converge(iter, val)) { printf("= converged\n"); break; }
-		// make sensitivity symmetry
-		symmetrizeField(rho.diff(), config.sym);
+		if (FLAGS_usesym) {
+			// make sensitivity symmetry
+			symmetrizeField(rho.diff(), config.sym);
+		}
 		// flatten the density and sensitivity tensor to array
 		auto sens = rho.diff().flatten();
 		auto rhoarray = rho.value().flatten();
@@ -367,8 +373,10 @@ void optiShear(cfg::HomoConfig config, var_tsexp_t<>& rho, Homogenization& hom, 
 		oc.update(sens.data(), rhoarray.data(), config.volRatio);
 		// graft array to tensor
 		rho.rvalue().graft(rhoarray.data());
-		// make density symmetry
-		symmetrizeField(rho.value(), config.sym);
+		if (FLAGS_usesym) {
+			// make density symmetry
+			symmetrizeField(rho.value(), config.sym);
+		}
 		// output temp results
 		logIter(iter, config, rho, sens, Ch, val);
 	}
@@ -395,7 +403,7 @@ void optiNpr(cfg::HomoConfig config, var_tsexp_t<>& rho, Homogenization& hom, el
 		// abort when cuda error occurs
 		AbortErr();
 		// define objective expression
-		float beta = 0.9; // for relaxed poission ratio objective
+		float beta = 0.8; // for relaxed poission ratio objective
 #if 1
 		//if (iter > 20) beta = 0.1;
 		auto objective = Ch(0, 1) + Ch(0, 2) + Ch(1, 2) -
@@ -418,8 +426,10 @@ void optiNpr(cfg::HomoConfig config, var_tsexp_t<>& rho, Homogenization& hom, el
 		printf("\033[32m\n * Iter %d   obj = %.4e\033[0m\n", iter, val);
 		// check convergence
 		if (criteria.is_converge(iter, val)) { printf("= converged\n"); break; }
-		// make sensitivity symmetry
-		symmetrizeField(rho.diff(), config.sym);
+		if(FLAGS_usesym){
+			// make sensitivity symmetry
+			symmetrizeField(rho.diff(), config.sym);
+		}
 		// flatten the density and sensitivity tensor to array
 		auto sens = rho.diff().flatten();
 		auto rhoarray = rho.value().flatten();
@@ -429,8 +439,10 @@ void optiNpr(cfg::HomoConfig config, var_tsexp_t<>& rho, Homogenization& hom, el
 		oc.update(sens.data(), rhoarray.data(), config.volRatio);
 		// graft array to tensor
 		rho.rvalue().graft(rhoarray.data());
-		// make density symmetry
-		symmetrizeField(rho.value(), config.sym);
+		if(FLAGS_usesym){
+			// make density symmetry
+			symmetrizeField(rho.value(), config.sym);
+		}
 		// output temp results
 		logIter(iter, config, rho, sens, Ch, val);
 	}
