@@ -62,7 +62,8 @@ namespace homo {
 			return buffers[name];
 		}
 		void deleteBuffer(const std::string& name) {
-			buffers[name].reset();
+			// buffers[name].reset();
+			buffers.erase(name);
 		}
 
 		bool deleteBuffer(void* pdata) {
