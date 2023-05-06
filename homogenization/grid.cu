@@ -2955,7 +2955,8 @@ void homo::Grid::getGsElementPos(std::vector<int> hostpos[3])
 	useGrid_g();
 	devArray_t<int*, 3> pos;
 	for (int i = 0; i < 3; i++) {
-		pos[i] = getMem().getBuffer(getMem().addBuffer(sizeof(int) * n_gscells()))->data<int>();
+		// pos[i] = getMem().getBuffer(getMem().addBuffer(sizeof(int) * n_gscells()))->data<int>();
+		cudaMalloc(&pos[i], sizeof(int) * n_gscells());
 		init_array(pos[i], -2, n_gscells());
 	}
 	size_t grid_size, block_size;
@@ -2967,7 +2968,8 @@ void homo::Grid::getGsElementPos(std::vector<int> hostpos[3])
 	for (int i = 0; i < 3; i++) {
 		hostpos[i].resize(n_gscells());
 		cudaMemcpy(hostpos[i].data(), pos[i], sizeof(int) * n_gscells(), cudaMemcpyDeviceToHost);
-		getMem().deleteBuffer(pos[i]);
+		// getMem().deleteBuffer(pos[i]);
+		cudaFree(pos[i]);
 	}
 }
 

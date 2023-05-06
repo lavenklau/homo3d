@@ -54,6 +54,7 @@ namespace homo {
 			static size_t n_ano = 0;
 			char buf[1000];
 			sprintf_s(buf, "anonymous_%zu", n_ano++);
+			printf("[buf] adding anonymous buffer %s...\n", buf);
 			addBuffer(buf, arr_sze);
 			return buf;
 		}
