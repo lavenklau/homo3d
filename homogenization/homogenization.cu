@@ -344,6 +344,8 @@ __global__ void elasticMatrix_kernel_opt(
 
 double homo::Homogenization::elasticMatrix(int i, int j)
 {
+	NO_SUPPORT_ERROR;
+#if 0
 	grid->useGrid_g();
 	size_t grid_size, block_size;
 	make_kernel_param(&grid_size, &block_size, grid->n_gsvertices(), 256);
@@ -373,6 +375,7 @@ double homo::Homogenization::elasticMatrix(int i, int j)
 
 	float C = dump_array_sum(Ce, grid->n_gscells());
 	return C;
+#endif
 }
 
 // 8 warps
@@ -530,6 +533,8 @@ void homo::Homogenization::elasticMatrix(double C[6][6])
 		cuda_error_check;
 	}
 	else {
+		NO_SUPPORT_ERROR;
+		#if 0
 		size_t grid_size, block_size;
 		int nv = grid->n_gsvertices();
 		make_kernel_param(&grid_size, &block_size, nv * 2, 256);
@@ -555,6 +560,7 @@ void homo::Homogenization::elasticMatrix(double C[6][6])
 			}
 		}
 		for (int i = 0; i < 6; i++) { for (int j = 0; j < i; j++) { C[i][j] = C[j][i]; } }
+		#endif
 	}
 
 	for (int i = 0; i < 6; i++) {
@@ -867,6 +873,8 @@ void homo::Homogenization::Sensitivity(float dC[6][6], float* sens, int pitchT, 
 	size_t grid_size, block_size;
 	make_kernel_param(&grid_size, &block_size, nv, 256);
 	if (!config.useManagedMemory) {
+		NO_SUPPORT_ERROR;
+		#if 0
 		for (int iStrain = 0; iStrain < 6; iStrain++) {
 			devArray_t<float*, 3> ui{ grid->u_g[0], grid->u_g[1], grid->u_g[2] };
 			grid->v3_upload(ui.data(), grid->uchar_h[iStrain]);
@@ -885,6 +893,7 @@ void homo::Homogenization::Sensitivity(float dC[6][6], float* sens, int pitchT, 
 				cuda_error_check;
 			}
 		}
+		#endif
 	}
 	else {
 		printf("Sensitivity analysis using managed memory...\n");

@@ -219,7 +219,7 @@ size_t Grid::allocateBuffer(int nv, int ne)
 		for (int j = 0; j < 3; j++) {
 			//fchar_g[i][j] = getMem().addBuffer(homoutils::formated("%s_fc_%d_%d", getName().c_str(), i, j), nv * sizeof(double))->data<double>();
 			//uchar_g[i][j] = getMem().addBuffer(homoutils::formated("%s_uc_%d_%d", getName().c_str(), i, j), nv * sizeof(double))->data<double>();
-			uchar_g[j] = getMem().addBuffer(homoutils::formated("%s_uc_%d", getName().c_str(), j), nv * sizeof(float))->data<float>();
+			// uchar_g[j] = getMem().addBuffer(homoutils::formated("%s_uc_%d", getName().c_str(), j), nv * sizeof(float))->data<float>();
 		}
 	}
 

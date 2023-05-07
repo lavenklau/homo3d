@@ -114,7 +114,7 @@ void homo::Grid::useGrid_g(void)
 	cudaMemcpyToSymbol(gGsVertexReso, gsVertexReso, sizeof(gGsVertexReso));
 
 	if (is_root) {
-		cudaMemcpyToSymbol(guchar, uchar_g, sizeof(guchar));
+		// cudaMemcpyToSymbol(guchar, uchar_g, sizeof(guchar));
 		//cudaMemcpyToSymbol(gfchar, fchar_g, sizeof(gfchar));
 		cudaMemcpyToSymbol(gGsCellReso, gsCellReso, sizeof(gGsCellReso));
 	}
@@ -2291,13 +2291,15 @@ __global__ void sensitivity_kernel(int nv,
 
 void homo::Grid::sensitivity(int i, int j, float* sens)
 {
-	//setMacroStrainDisplacement(i, u_g);
-	//v3_linear(1, u_g, -1, uchar_g[i], u_g);
-	//v3_copy(u_g, uchar_g[i]);
+	// setMacroStrainDisplacement(i, u_g);
+	// v3_linear(1, u_g, -1, uchar_g[i], u_g);
+	// v3_copy(u_g, uchar_g[i]);
 
-	//setMacroStrainDisplacement(j, f_g);
-	//v3_linear(1, f_g, -1, fchar_g[j], f_g);
-	//v3_copy(f_g, uchar_g[j]);
+	// setMacroStrainDisplacement(j, f_g);
+	// v3_linear(1, f_g, -1, fchar_g[j], f_g);
+	// v3_copy(f_g, uchar_g[j]);
+	NO_SUPPORT_ERROR;
+#if 0
 
 	size_t grid_size, block_size;
 	make_kernel_param(&grid_size, &block_size, n_gsvertices(), 256);
@@ -2324,6 +2326,7 @@ void homo::Grid::sensitivity(int i, int j, float* sens)
 	//});
 	//cudaDeviceSynchronize();
 	//cuda_error_check;
+#endif
 }
 
 // scatter per fine element matrix to coarse stencil
