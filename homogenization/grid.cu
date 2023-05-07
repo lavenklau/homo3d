@@ -2509,6 +2509,7 @@ void homo::Grid::lexiStencil2gsorder(void)
 			cudaMemcpy(stencil_g[i][j], tmp, sizeof(float) * n_gsvertices(), cudaMemcpyDeviceToDevice);
 		}
 	}
+	getMem().deleteBuffer(tmpname);
 	cuda_error_check;
 }	
 

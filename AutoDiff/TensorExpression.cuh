@@ -33,6 +33,7 @@ namespace homo {
 			dataview.size(0) * sizeof(T),
 			dataview.size(1) * dataview.size(2), cudaMemcpyDeviceToDevice);
 		cuda_error_check;
+		cudaFree(randarr);
 	}
 
 	template<typename Scalar, typename Acc>
