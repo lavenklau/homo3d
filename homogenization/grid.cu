@@ -578,13 +578,11 @@ __global__ void gs_relaxation_kernel(
 			VertexFlags neiflag = vflags[neighId];
 			if (!neiflag.is_fiction()) {
 				glm::vec<3, float> u(gU[0][neighId], gU[1][neighId], gU[2][neighId]);
-				glm::mat3 st;
-				for (int rr = 0; rr < 3; rr++) {
-					for (int cc = 0; cc < 3; cc++) {
-						st[cc][rr] = rxstencil[vneigh][rr * 3 + cc][vid];
+				for (int j = 0; j < 3; j++) {
+					for (int k = 0; k < 3; k++) {
+						Au[j] += rxstencil[vneigh][j * 3 + k][vid] * u[k];
 					}
 				}
-				Au += st * u;
 			}
 		}
 	}
@@ -1472,13 +1470,18 @@ __global__ void update_residual_kernel_1(
 				VertexFlags neighFlag = vflags[neighId];
 				if (!neighFlag.is_fiction()) {
 					glm::vec<3, float> u(gU[0][neighId], gU[1][neighId], gU[2][neighId]);
-					glm::mat3 st;
-					for (int rr = 0; rr < 3; rr++) {
-						for (int cc = 0; cc < 3; cc++) {
-								st[cc][rr] = rxstencil[vneigh][rr * 3 + cc][vid];
-						}
-					}
-					KeU += st * u;
+					KeU[0] +=
+						rxstencil[vneigh][0][vid] * u[0] +
+						rxstencil[vneigh][1][vid] * u[1] +
+						rxstencil[vneigh][2][vid] * u[2];
+					KeU[1] +=
+						rxstencil[vneigh][3][vid] * u[0] +
+						rxstencil[vneigh][4][vid] * u[1] +
+						rxstencil[vneigh][5][vid] * u[2];
+					KeU[2] +=
+						rxstencil[vneigh][6][vid] * u[0] +
+						rxstencil[vneigh][7][vid] * u[1] +
+						rxstencil[vneigh][8][vid] * u[2];
 				}
 			}
 		}
