@@ -146,7 +146,11 @@ void testHomogenization(cfg::HomoConfig config) {
 	}
 	else if (config.testname == "vcycle") {
 		Homogenization hom(config);
-		hom.getGrid()->readDensity(config.inputrho, VoxelIOFormat::openVDB);
+		if(config.inputrho.empty()){
+			hom.getGrid()->randDensity();
+		} else{
+			hom.getGrid()->readDensity(config.inputrho, VoxelIOFormat::openVDB);
+		}
 		hom.mg_->updateStencils();
 		hom.getGrid()->useFchar(4);
 		hom.mg_->test_v_cycle();
@@ -327,10 +331,10 @@ void testHomogenization(cfg::HomoConfig config) {
 		hom.mg_->updateStencils();
 #if 1
 		cudaProfilerStart();
-		hom.getGrid()->gs_relaxation_ex();
+		hom.getGrid()->gs_relaxation();
 		cudaProfilerStop();
 		_TIC("relxex");
-		hom.getGrid()->gs_relaxation_ex();
+		hom.getGrid()->gs_relaxation();
 		_TOC;
 		printf("relxex  time = %f ms\n", tictoc::get_record("relxex"));
 #else
@@ -426,7 +430,7 @@ void testHomogenization(cfg::HomoConfig config) {
 			grids[i]->prolongate_correction();
 		}
 		//grids[0]->v3_write(getPath("u2"), grids[0]->u_g);
-		grids[0]->v3_write(getPath("u4"), grids[0]->u_g);
+		grids[0]->v3_write(getPath("u4"), grids[0]->u_g, true);
 	}
 	else if (config.testname == "lamuset") {
 		auto lam = getKeLam72();

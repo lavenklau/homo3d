@@ -2,6 +2,7 @@
 #include "cuda_runtime.h"
 #include "culib/lib.cuh"
 #include "AutoDiff/TensorExpression.h"
+#include "cmdline.h"
 
 
 using namespace homo;
@@ -87,6 +88,9 @@ __global__ void filterSens_kernel(
 		ker.neigh(nei, offset);
 		float w = ker.weight(offset);
 		int neighpos[3] = { epos[0] + offset[0], epos[1] + offset[1], epos[2] + offset[2] };
+		if (ker.is_period()) {
+			for (int i = 0; i < 3; i++) neighpos[i] = (neighpos[i] + reso[i]) % reso[i];
+		}
 		if (is_bounded(neighpos, ereso)) {
 			int neighid = neighpos[0] + (neighpos[1] + neighpos[2] * ereso[1]) * pitchT;
 			//w /= weightSum[neighid];
@@ -115,6 +119,9 @@ __global__ void weightSum_kernel(int ne, devArray_t<int, 3> reso, size_t pitchT,
 		ker.neigh(nei, offset);
 		float w = ker.weight(offset);
 		int neighpos[3] = { epos[0] + offset[0], epos[1] + offset[1], epos[2] + offset[2] };
+		if (ker.is_period()) {
+			for (int i = 0; i < 3; i++) neighpos[i] = (neighpos[i] + reso[i]) % reso[i];
+		}
 		if (is_bounded(neighpos, ereso)) {
 			int neighid = neighpos[0] + (neighpos[1] + neighpos[2] * ereso[1]) * pitchT;
 			wsum += w;
@@ -133,7 +140,7 @@ void OCOptimizer::filterSens(float* sens, const float* rho, size_t pitchT, int r
 	}
 	float* newsens;
 	cudaMalloc(&newsens, sizeof(float) * reso[1] * reso[2] * pitchT);
-	radial_convker_t<float, Linear> convker(radius, 0, true, false);
+	radial_convker_t<float, Linear> convker(radius, 0, true, FLAGS_periodfilt);
 	devArray_t<int, 3> ereso{ reso[0],reso[1],reso[2] };
 	size_t grid_size, block_size;
 	make_kernel_param(&grid_size, &block_size, ne, 256);

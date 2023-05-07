@@ -122,6 +122,7 @@ double homo::MG::solveEquation(double tol /*= 1e-2*/, bool with_guess /*= true*/
 	//grids[0]->v3_copy(ftmp, grids[0]->f_g);
 	//grids[0]->v3_toMatlab("f", grids[0]->f_g);
 	int overflow_counter = 2;
+	bool enable_translate_displacement = false;
 	std::vector<double> errlist;
 	double uch = 1e-7;
 	while ((rel_res > tol || uch > 1e-6) && iter++ < 200) {
@@ -133,23 +134,25 @@ double homo::MG::solveEquation(double tol /*= 1e-2*/, bool with_guess /*= true*/
 		grids[0]->update_residual();
 		rel_res = grids[0]->relative_residual();
 #endif
+		if (enable_translate_displacement) grids[0]->translateForce(2, grids[0]->u_g);
 		rel_res = grids[0]->residual() / (fnorm + 1e-10);
 		if (rel_res > 1e4) {
 			//throw std::runtime_error("numerical failure");
 			printf("\033[31m\nnumerical explode, resetting initial guess...\033[0m\n");
+			enable_translate_displacement = true;
 			grids[0]->v3_toMatlab("ferr", grids[0]->getForce());
 			grids[0]->v3_toMatlab("rerr", grids[0]->getResidual());
 			grids[0]->v3_toMatlab("uerr", grids[0]->getDisplacement());
-			grids[0]->v3_write(getPath("ferr"), grids[0]->getForce());
-			grids[0]->v3_write(getPath("rerr"), grids[0]->getResidual());
-			grids[0]->v3_write(getPath("uerr"), grids[0]->getDisplacement());
+			grids[0]->v3_write(getPath("ferr"), grids[0]->getForce(), true);
+			grids[0]->v3_write(getPath("rerr"), grids[0]->getResidual(), true);
+			grids[0]->v3_write(getPath("uerr"), grids[0]->getDisplacement(), true);
 			auto& gc = *grids.rbegin();
 			// write coarsest force
-			gc->v3_write(getPath("berr"), gc->f_g);
+			gc->v3_write(getPath("berr"), gc->f_g, true);
 			// write coarsest system matrix
 			std::ofstream ofs(getPath("Khosterr")); ofs << gc->Khost; ofs.close();
 			// write solved x
-			gc->v3_write(getPath("xerr"), gc->u_g);
+			gc->v3_write(getPath("xerr"), gc->u_g, true);
 			// write gs pos
 			gc->writeGsVertexPos(getPath("poserr"));
 			grids[0]->reset_displacement();
@@ -194,14 +197,14 @@ double homo::MG::solveEquation(double tol /*= 1e-2*/, bool with_guess /*= true*/
 
 double homo::MG::pcg(void)
 {
-	double* r[3], * z[3], * x[3], * p[3], * Ap[3];
+	float* r[3], * z[3], * x[3], * p[3], * Ap[3];
 	//grids[0]->v3_create(r);
 	grids[0]->v3_create(z); grids[0]->v3_reset(z);
 	grids[0]->v3_create(x); grids[0]->v3_reset(x);
 	grids[0]->v3_create(p); grids[0]->v3_reset(p);
 	grids[0]->v3_create(Ap); grids[0]->v3_reset(Ap);
 	// for debug
-	double* b[3];
+	float* b[3];
 	grids[0]->v3_create(b); grids[0]->v3_reset(b);
 	grids[0]->v3_copy(b, grids[0]->f_g);
 
@@ -224,7 +227,7 @@ double homo::MG::pcg(void)
 
 	//grids[0]->stencil2matlab("K16");
 
-	auto precondition = [&](/*double* v[3],*/ double* Mv[3]) {
+	auto precondition = [&](/*double* v[3],*/ float* Mv[3]) {
 		//grids[0]->setForce(v);
 		grids[0]->reset_displacement();
 		double rr = 1;
@@ -240,7 +243,7 @@ double homo::MG::pcg(void)
 		grids[0]->v3_linear(1.f, z, beta, p, p);
 	};
 
-	auto compute_Ap = [&](double* p_[3], double* Ap_[3]) {
+	auto compute_Ap = [&](float* p_[3], float* Ap_[3]) {
 		grids[0]->v3_stencilOnLeft(p_, Ap_);
 	};
 
@@ -350,7 +353,26 @@ void homo::MG::test_v_cycle(void)
 
 	int itn = 0;
 
-#if 0
+#if 1
+	//grids[1]->stencil2matlab("K0", true);
+	//grids[2]->stencil2matlab("K1", true);
+	//grids[1]->restrictMatrix2matlab("R", *grids[2]);
+	std::vector<double> errhis;
+	double s_time = 0;
+	for (int itn = 0; itn < 50; itn++) {
+		_TIC("vc");
+		v_cycle();
+		_TOC;
+		grids[0]->update_residual();
+		double err = grids[0]->relative_residual();
+		errhis.push_back(err);
+		printf("iter. %d   r = %e\n", itn, err);
+		s_time += tictoc::get_record("vc");
+	}
+	array2ConnectedMatlab("errhis", errhis.data(), errhis.size());
+	printf("average time = %.2f\n", s_time / 50);
+	printf("=finished\n");
+#elif 0
 	grids[0]->v3_toMatlab("f", grids[0]->f_g);
 	double fnorm = grids[0]->v3_norm(grids[0]->f_g);
 	grids[0]->writeDensity(getPath("testrho"), VoxelIOFormat::openVDB);
@@ -557,8 +579,8 @@ void homo::MG::test_diag_precondition(void)
 	grids[0]->useFchar(0);
 	grids[0]->v3_toMatlab("f0", grids[0]->getForce());
 	double fnorm = grids[0]->v3_norm(grids[0]->f_g);
-	double* ftmp[3]; grids[0]->v3_create(ftmp); grids[0]->v3_copy(ftmp, grids[0]->getForce());
-	double* utmp[3]; grids[0]->v3_create(utmp);
+	float* ftmp[3]; grids[0]->v3_create(ftmp); grids[0]->v3_copy(ftmp, grids[0]->getForce());
+	float* utmp[3]; grids[0]->v3_create(utmp);
 
 	for (int itn = 0; itn < 1000; itn++) {
 		grids[0]->v3_copy(utmp, grids[0]->getDisplacement());

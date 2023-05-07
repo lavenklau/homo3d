@@ -25,6 +25,8 @@ DECLARE_double(filter);
 DECLARE_double(step);
 DECLARE_double(damp);
 DECLARE_double(relthres);
+DECLARE_bool(periodfilt);
+DECLARE_bool(usesym);
 
 
 #define b2s(boolValue) (boolValue?"Yes":"No")

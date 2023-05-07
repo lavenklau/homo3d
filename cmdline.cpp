@@ -23,6 +23,8 @@ DEFINE_double(filter, 2, "filter radius");
 DEFINE_double(step, 0.05, "design step for oc");
 DEFINE_double(damp, 0.5, "damp ratio for oc");
 DEFINE_double(relthres, 0.01, "relative residual threshold for FEM");
+DEFINE_bool(periodfilt, false, "use periodic filter");
+DEFINE_bool(usesym, true, "whether to use symmetrization");
 
 void cfg::HomoConfig::parse(int argc, char** argv)
 {

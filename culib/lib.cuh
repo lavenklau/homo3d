@@ -16,6 +16,7 @@
 #include "warp_primitive.cuh"
 #include <memory>
 #include "cuda/std/type_traits"
+#include "glm/glm.hpp"
 
 #define cuda_error_check do{ \
 	auto err = cudaPeekAtLastError(); \
