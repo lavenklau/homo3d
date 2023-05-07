@@ -4,6 +4,7 @@
 #include "cuda_runtime.h"
 #include "cub/util_ptx.cuh"
 #include <cuda/std/tuple>
+#include "cuda_fp16.h"
 
 using namespace culib;
 
@@ -69,6 +70,9 @@ __device__ void loadTemplateMatrix(volatile T KE[24][24]) {
 		}
 		else if (std::is_same_v<T, double>) {
 			KE[ri][cj] = gKEd[ri][cj];
+		}
+		else if(std::is_same_v<T,half>){
+			KE[ri][cj] = __float2half(gKE[ri][cj]);
 		}
 		else {
 			print_exception;
@@ -522,3 +526,9 @@ __host__ __device__ inline int lexi2gs(short3 lexpos, int gsreso[3][8], int gsen
 	return gsid;
 }
 
+#define NO_SUPPORT_ERROR                                                               \
+	do                                                                                 \
+	{                                                                                  \
+		printf("Error : No support!\n -> file %s\n -> line %d\n", __FILE__, __LINE__); \
+		throw std::runtime_error("no support");                                        \
+	} while (0)

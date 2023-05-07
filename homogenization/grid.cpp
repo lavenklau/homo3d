@@ -200,9 +200,9 @@ size_t Grid::allocateBuffer(int nv, int ne)
 	size_t total = 0;
 	// allocate FEM vectors
 	for (int i = 0; i < 3; i++) {
-		u_g[i] = getMem().addBuffer(homoutils::formated("%s_u_%d", getName().c_str(), i), nv * sizeof(float) * 2)->data<float>();
-		f_g[i] = getMem().addBuffer(homoutils::formated("%s_f_%d", getName().c_str(), i), nv * sizeof(float) * 2)->data<float>();
-		r_g[i] = getMem().addBuffer(homoutils::formated("%s_r_%d", getName().c_str(), i), nv * sizeof(float) * 2)->data<float>();
+		u_g[i] = getMem().addBuffer(homoutils::formated("%s_u_%d", getName().c_str(), i), nv * sizeof(float))->data<float>();
+		f_g[i] = getMem().addBuffer(homoutils::formated("%s_f_%d", getName().c_str(), i), nv * sizeof(float))->data<float>();
+		r_g[i] = getMem().addBuffer(homoutils::formated("%s_r_%d", getName().c_str(), i), nv * sizeof(float))->data<float>();
 	}
 	total += nv * 9 * sizeof(float);
 	// allocate stencil buffer

@@ -2,6 +2,8 @@
 #include "device_launch_parameters.h"
 #include "homoCommon.cuh"
 #include "tictoc.h"
+#include "cuda_fp16.h"
+#include "mma.h"
 
 #define USE_LAME_MATRIX 1
 
@@ -205,7 +207,7 @@ __global__ void elasticMatrix_kernel_wise_opt(
 
 __global__ void elasticMatrix_kernel_opt(
 	int nv,
-	devArray_t<devArray_t<float2*, 3>, 3> ucharlist,
+	devArray_t<devArray_t<half2*, 3>, 3> ucharlist,
 	float* rholist, VertexFlags* vflags, CellFlags* eflags,
 	float* elementCompliance, int pitchT
 ) {
@@ -270,7 +272,7 @@ __global__ void elasticMatrix_kernel_opt(
 				for (int j = 0; j < 3; j++) {
 #pragma unroll
 					for (int i = 0; i < 8; i++) {
-						float2 chipair = ucharlist[warpId][j][ev[i]];
+						float2 chipair = __half22float2(ucharlist[warpId][j][ev[i]]);
 						uchar[warpId * 2][i * 3 + j][laneId] = uChi[warpId * 2][i * 3 + j] - chipair.x;
 						uchar[warpId * 2 + 1][i * 3 + j][laneId] = uChi[warpId * 2 + 1][i * 3 + j] - chipair.y;
 					}
@@ -431,7 +433,7 @@ template<int BlockSize = 256>
 __global__ void fillTotalVertices_kernel(
 	int nv, VertexFlags* vflags,
 	devArray_t<devArray_t<float*, 3>, 6> uchar,
-	devArray_t<devArray_t<float2*, 3>, 3> dst
+	devArray_t<devArray_t<half2*, 3>, 3> dst
 ) {
 	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
 	if (tid >= nv) return;
@@ -448,11 +450,11 @@ __global__ void fillTotalVertices_kernel(
 		//int p[3] = { pos.x - 1, pos.y - 1, pos.z - 1 };
 		//int lexid = p[0] + p[1] * (ereso[0] + 1) + p[2] * (ereso[0] + 1) * (ereso[1] + 1);
 		for (int i = 0; i < 3; i++) {
-			float2 chis{ float(uchar[i * 2][0][vid]), float(uchar[i * 2 + 1][0][vid]) };
+			half2 chis{ half(uchar[i * 2][0][vid]), half(uchar[i * 2 + 1][0][vid]) };
 			dst[i][0][vid] = chis;
-			chis = float2{ float(uchar[i * 2][1][vid]), float(uchar[i * 2 + 1][1][vid]) };
+			chis = half2{ half(uchar[i * 2][1][vid]), half(uchar[i * 2 + 1][1][vid]) };
 			dst[i][1][vid] = chis;
-			chis = float2{ float(uchar[i * 2][2][vid]), float(uchar[i * 2 + 1][2][vid]) };
+			chis = half2{ half(uchar[i * 2][2][vid]), half(uchar[i * 2 + 1][2][vid]) };
 			dst[i][2][vid] = chis;
 		}
 	}
@@ -492,11 +494,11 @@ void homo::Homogenization::elasticMatrix(double C[6][6])
 		int nv = grid->n_gsvertices();
 		size_t grid_size, block_size;
 		// prefecth unified memory data to device memory
-		devArray_t<devArray_t<float2*, 3>, 3> dst;
+		devArray_t<devArray_t<half2*, 3>, 3> dst;
 		for (int k = 0; k < 3; k++) {
-			dst[0][k] = reinterpret_cast<float2*>(grid->f_g[k]);
-			dst[1][k] = reinterpret_cast<float2*>(grid->u_g[k]);
-			dst[2][k] = reinterpret_cast<float2*>(grid->r_g[k]);
+			dst[0][k] = reinterpret_cast<half2*>(grid->f_g[k]);
+			dst[1][k] = reinterpret_cast<half2*>(grid->u_g[k]);
+			dst[2][k] = reinterpret_cast<half2*>(grid->r_g[k]);
 		}
 		make_kernel_param(&grid_size, &block_size, nv, 256);
 		fillTotalVertices_kernel << <grid_size, block_size >> > (nv, vflags, ucharlist, dst);
@@ -693,7 +695,7 @@ __global__ void Sensitivity_kernel_wise_opt_2(
 template<int BlockSize = 256>
 __global__ void Sensitivity_kernel_opt_2(
 	int nv, VertexFlags* vflags, CellFlags* eflags,
-	devArray_t<devArray_t<float2*, 3>, 3> ucharlist,
+	devArray_t<devArray_t<half2*, 3>, 3> ucharlist,
 	float* rholist,
 	devArray_t<devArray_t<float, 6>, 6> dc,
 	float* sens, float volume,
@@ -770,7 +772,7 @@ __global__ void Sensitivity_kernel_opt_2(
 				for (int j = 0; j < 3; j++) {
 #pragma unroll
 					for (int i = 0; i < 8; i++) {
-						float2 chipair = ucharlist[warpId][j][ev[i]];
+						float2 chipair = __half22float2(ucharlist[warpId][j][ev[i]]);
 						uchar[warpId * 2][i * 3 + j][laneId] = uChi[warpId * 2][i * 3 + j] - chipair.x;
 						uchar[warpId * 2 + 1][i * 3 + j][laneId] = uChi[warpId * 2 + 1][i * 3 + j] - chipair.y;
 					}
@@ -779,6 +781,7 @@ __global__ void Sensitivity_kernel_opt_2(
 		}
 	}
 	__syncthreads();
+
 	float dc_lane[6][6] = { 0. };
 	float prho = 0;
 	// 8 warp to 32 vertices
@@ -903,11 +906,11 @@ void homo::Homogenization::Sensitivity(float dC[6][6], float* sens, int pitchT, 
 				uchar[i][j] = grid->uchar_h[i][j];
 			}
 		}
-		devArray_t<devArray_t<float2*, 3>, 3> dst;
+		devArray_t<devArray_t<half2*, 3>, 3> dst;
 		for (int k = 0; k < 3; k++) {
-			dst[0][k] = reinterpret_cast<float2*>(grid->f_g[k]);
-			dst[1][k] = reinterpret_cast<float2*>(grid->u_g[k]);
-			dst[2][k] = reinterpret_cast<float2*>(grid->r_g[k]);
+			dst[0][k] = reinterpret_cast<half2*>(grid->f_g[k]);
+			dst[1][k] = reinterpret_cast<half2*>(grid->u_g[k]);
+			dst[2][k] = reinterpret_cast<half2*>(grid->r_g[k]);
 		}
 		make_kernel_param(&grid_size, &block_size, nv, 256);
 		fillTotalVertices_kernel << <grid_size, block_size >> > (nv, vflags, uchar, dst);
