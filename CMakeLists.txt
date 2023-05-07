@@ -75,7 +75,7 @@ message(STATUS "deprecated sources : ${deprefiles}")
 add_library(cubin STATIC ${cudafiles})
 set_target_properties(cubin PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 set_target_properties(cubin PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
-set_target_properties(cubin PROPERTIES CUDA_ARCHITECTURES "52;61;75;86")
+set_target_properties(cubin PROPERTIES CUDA_ARCHITECTURES "61;75;86")
 # set_target_properties(cubin PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_options(cubin PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:
 	--relocatable-device-code=true
@@ -102,7 +102,7 @@ file(GLOB cppfiles
 # file(GLOB cppfiles *.cpp)
 add_executable(homo3d ${cppfiles})
 target_include_directories(homo3d PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
-set_target_properties(homo3d PROPERTIES CUDA_ARCHITECTURES "52;61;75;86")
+set_target_properties(homo3d PROPERTIES CUDA_ARCHITECTURES "61;75;86")
 target_link_libraries(homo3d PRIVATE cubin)
 target_link_libraries(homo3d PRIVATE OpenVDB::openvdb)
 target_link_libraries(homo3d PRIVATE -lHalf)
