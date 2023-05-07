@@ -6,6 +6,7 @@
 #include "cuda_runtime.h"
 #include <string>
 #include <map>
+#include <iostream>
 
 namespace homo {
 	enum MemType {
@@ -62,17 +63,28 @@ namespace homo {
 			return buffers[name];
 		}
 		void deleteBuffer(const std::string& name) {
-			buffers[name].reset();
+			// buffers[name].reset();
+			if (buffers.count(name) == 0) {
+				std::cout << "\033[31m"
+						  << "Warning : deleting unknown bufffer " << name << "\033[0m" << std::endl;
+			}
+			buffers.erase(name);
 		}
 
 		bool deleteBuffer(void* pdata) {
+			bool found_buf = false;
 			for (auto iter = buffers.begin(); iter != buffers.end(); iter++) {
 				if (iter->second->get() == pdata) {
 					buffers.erase(iter);
-					return true;
+					found_buf = true;
+					break;
 				}
 			}
-			return false;
+			if (!found_buf) {
+				std::cout << "\033[31m"
+						  << "Warning : unknown buffer " << pdata << "\033[0m" << std::endl;
+			}
+			return found_buf;
 		}
 
 		size_t size(void) const {
