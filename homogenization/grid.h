@@ -127,7 +127,7 @@ struct Grid {
 	double* r_g[3];
 	//double* uchar_g[6][3];
 	//double* fchar_g[6][3];
-	double* uchar_g[3];
+	// float* uchar_g[3];
 	double* uchar_h[6][3];
 	float* rho_g;
 	VertexFlags* vertflag;
