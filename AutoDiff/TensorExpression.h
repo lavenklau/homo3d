@@ -40,7 +40,14 @@ namespace homo {
 			ptr.ptr = nullptr;
 			dim = dim_;
 			dim_.width *= sizeof(T);
+#if 0
 			auto err = cudaMalloc3D(&ptr, dim_);
+#else
+			ptr.pitch = (dim_.width + 511) / 512 * 512;
+			ptr.xsize = dim_.width / sizeof(T);
+			ptr.ysize = dim_.depth * dim_.height;
+			auto err = cudaMallocManaged(&ptr.ptr, ptr.pitch * ptr.ysize );
+#endif
 			if (err) {
 				CheckErr(err);
 				printf("memory allocation failed,  dim = (%zu, %zu, %zu), siz = %zu",
