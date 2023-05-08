@@ -2924,8 +2924,9 @@ void homo::Grid::getGsVertexPos(std::vector<int> hostpos[3])
 	size_t grid_size, block_size;
 	make_kernel_param(&grid_size, &block_size, n_gsvertices(), 256);
 	for (int i = 0; i < 3; i++) {
-		auto buffer = getTempBuffer(sizeof(int) * n_gsvertices());
-		pos[i] = buffer.data<int>();
+		// auto buffer = getTempBuffer(sizeof(int) * n_gsvertices());
+		// pos[i] = buffer.data<int>();
+		cudaMallocManaged(&pos[i], sizeof(int) * n_gsvertices());
 		init_array(pos[i], -2, n_gsvertices());
 		// ...
 		gsid2pos_kernel<<<grid_size, block_size>>>(n_gsvertices(), vertflag, pos, i);
@@ -2933,6 +2934,7 @@ void homo::Grid::getGsVertexPos(std::vector<int> hostpos[3])
 		cuda_error_check;
 		hostpos[i].resize(n_gsvertices());
 		cudaMemcpy(hostpos[i].data(), pos[i], sizeof(int) * n_gsvertices(), cudaMemcpyDeviceToHost);
+		cudaFree(pos[i]);
 	}
 }
 
@@ -2943,8 +2945,9 @@ void homo::Grid::getGsElementPos(std::vector<int> hostpos[3])
 	size_t grid_size, block_size;
 	make_kernel_param(&grid_size, &block_size, n_gscells(), 256);
 	for (int i = 0; i < 3; i++) {
-		auto buffer = getTempBuffer(sizeof(int) * n_gscells());
-		pos[i] = buffer.data<int>();
+		// auto buffer = getTempBuffer(sizeof(int) * n_gscells());
+		// pos[i] = buffer.data<int>();
+		cudaMallocManaged(&pos[i], sizeof(int) * n_gscells());
 		init_array(pos[i], -2, n_gscells());
 		// ...
 		gsid2pos_kernel<<<grid_size, block_size>>>(n_gscells(), cellflag, pos, i);
@@ -2952,6 +2955,7 @@ void homo::Grid::getGsElementPos(std::vector<int> hostpos[3])
 		cuda_error_check;
 		hostpos[i].resize(n_gscells());
 		cudaMemcpy(hostpos[i].data(), pos[i], sizeof(int) * n_gscells(), cudaMemcpyDeviceToHost);
+		cudaFree(pos[i]);
 	}
 }
 
