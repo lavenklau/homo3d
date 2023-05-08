@@ -2668,8 +2668,8 @@ void homo::Grid::enforce_period_stencil(bool additive)
 #endif
 }
 
-template<typename Flag>
-__global__ void gsid2pos_kernel(int n, Flag* flags, devArray_t<int*, 3> pos) {
+template <typename Flag>
+__global__ void gsid2pos_kernel(int n, Flag *flags, devArray_t<int *, 3> pos, int off = -1) {
 	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
 	if (tid >= n) { return; }
 	constexpr bool isVertexId = std::is_same_v<std::decay_t<Flag>, VertexFlags>;
@@ -2679,7 +2679,10 @@ __global__ void gsid2pos_kernel(int n, Flag* flags, devArray_t<int*, 3> pos) {
 		if (!vflag.is_fiction()) {
 			int p[3];
 			gsid2pos(tid, vflag.get_gscolor(), gGsVertexReso, gGsVertexEnd, p);
-			for (int i = 0; i < 3; i++) pos[i][tid] = p[i];
+			if (off < 0 || off > 2)
+				for (int i = 0; i < 3; i++) pos[i][tid] = p[i];
+			else
+				pos[off][tid] = p[off];
 		}
 	} // vertex id
 	else if (isCellId) {
@@ -2687,7 +2690,10 @@ __global__ void gsid2pos_kernel(int n, Flag* flags, devArray_t<int*, 3> pos) {
 		if (!eflag.is_fiction()) {
 			int p[3];
 			gsid2pos(tid, eflag.get_gscolor(), gGsCellReso, gGsCellEnd, p);
-			for (int i = 0; i < 3; i++) pos[i][tid] = p[i];
+			if (off < 0 || off > 2)
+				for (int i = 0; i < 3; i++) pos[i][tid] = p[i];
+			else
+				pos[off][tid] = p[off];
 		}
 	} // element id
 	else {
@@ -2915,46 +2921,37 @@ void homo::Grid::getGsVertexPos(std::vector<int> hostpos[3])
 {
 	useGrid_g();
 	devArray_t<int*, 3> pos;
-	for (int i = 0; i < 3; i++) {
-		//pos[i] = getMem().getBuffer(getMem().addBuffer(sizeof(int) * n_gsvertices()))->data<int>();
-		cudaMalloc(&pos[i], sizeof(int) * n_gsvertices());
-		init_array(pos[i], -2, n_gsvertices());
-	}
 	size_t grid_size, block_size;
 	make_kernel_param(&grid_size, &block_size, n_gsvertices(), 256);
-	// ...
-	gsid2pos_kernel << <grid_size, block_size >> > (n_gsvertices(), vertflag, pos);
-	cudaDeviceSynchronize();
-	cuda_error_check;
 	for (int i = 0; i < 3; i++) {
+		auto buffer = getTempBuffer(sizeof(int) * n_gsvertices());
+		pos[i] = buffer.data<int>();
+		init_array(pos[i], -2, n_gsvertices());
+		// ...
+		gsid2pos_kernel<<<grid_size, block_size>>>(n_gsvertices(), vertflag, pos, i);
+		cudaDeviceSynchronize();
+		cuda_error_check;
 		hostpos[i].resize(n_gsvertices());
 		cudaMemcpy(hostpos[i].data(), pos[i], sizeof(int) * n_gsvertices(), cudaMemcpyDeviceToHost);
-		//getMem().deleteBuffer(pos[i]);
-		cudaFree(pos[i]);
 	}
-
 }
 
 void homo::Grid::getGsElementPos(std::vector<int> hostpos[3])
 {
 	useGrid_g();
 	devArray_t<int*, 3> pos;
-	for (int i = 0; i < 3; i++) {
-		//pos[i] = getMem().getBuffer(getMem().addBuffer(sizeof(int) * n_gscells()))->data<int>();
-		cudaMalloc(&pos[i], sizeof(int) * n_gscells());
-		init_array(pos[i], -2, n_gscells());
-	}
 	size_t grid_size, block_size;
 	make_kernel_param(&grid_size, &block_size, n_gscells(), 256);
-	// ...
-	gsid2pos_kernel << <grid_size, block_size >> > (n_gscells(), cellflag, pos);
-	cudaDeviceSynchronize();
-	cuda_error_check;
 	for (int i = 0; i < 3; i++) {
+		auto buffer = getTempBuffer(sizeof(int) * n_gscells());
+		pos[i] = buffer.data<int>();
+		init_array(pos[i], -2, n_gscells());
+		// ...
+		gsid2pos_kernel<<<grid_size, block_size>>>(n_gscells(), cellflag, pos, i);
+		cudaDeviceSynchronize();
+		cuda_error_check;
 		hostpos[i].resize(n_gscells());
 		cudaMemcpy(hostpos[i].data(), pos[i], sizeof(int) * n_gscells(), cudaMemcpyDeviceToHost);
-		//getMem().deleteBuffer(pos[i]);
-		cudaFree(pos[i]);
 	}
 }
 
