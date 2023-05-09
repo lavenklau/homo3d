@@ -575,11 +575,12 @@ void homo::Homogenization::elasticMatrix(double C[6][6])
 }
 
 
+template<typename T>
 __global__ void Sensitivity_kernel_wise_opt_2(
 	int nv, VertexFlags* vflags, CellFlags* eflags,
 	int iStrain, int jStrain,
 	devArray_t<float*, 3> ui, devArray_t<float*, 3> uj,
-	float* rholist,
+	T* rholist,
 	devArray_t<devArray_t<float, 6>, 6> dc,
 	float* sens, float volume,
 	int pitchT, bool lexiOrder

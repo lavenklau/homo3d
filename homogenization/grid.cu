@@ -320,9 +320,9 @@ void homo::Grid::setFlags_g(void)
 
 
 // map 32 vertices to 8 warp
-template<int BlockSize = 32 * 8>
+template<typename T, int BlockSize = 32 * 8>
 __global__ void gs_relaxation_otf_kernel(
-	int gs_set, half* rholist,
+	int gs_set, T* rholist,
 	devArray_t<int, 3> gridCellReso,
 	VertexFlags* vflags, CellFlags* eflags,
 	// SOR relaxing factor
@@ -1273,8 +1273,9 @@ void homo::Grid::restrict_residual(void)
 }
 
 // map 32 vertices to 8 warp
+template<typename T>
 __global__ void update_residual_otf_kernel_1(
-	int nv, half* rholist,
+	int nv, T* rholist,
 	devArray_t<int, 3> gridCellReso, 
 	VertexFlags* vflags, CellFlags* eflags,
 	float diag_strength
@@ -1813,8 +1814,9 @@ __device__ void getMacroStrain(int i, T u[8][3]) {
 }
 
 // ToDo : map 32 vertices to 8 warp
+template<typename T>
 __global__ void enforce_unit_macro_strain_kernel(
-	int nv, int istrain, devArray_t<half*, 3> fcharlist, VertexFlags* vflags, CellFlags* eflags, half* rholist
+	int nv, int istrain, devArray_t<half*, 3> fcharlist, VertexFlags* vflags, CellFlags* eflags, T* rholist
 ) {
 
 #if USE_LAME_MATRIX
@@ -2154,9 +2156,9 @@ double Grid::compliance(half* ug[3], half* vg[3])
 	cuda_error_check;
 
 	{
-		std::vector<float> ce(n_gscells());
-		cudaMemcpy(ce.data(), Ce, sizeof(float) * n_gscells(), cudaMemcpyDeviceToHost);
-		array2matlab("ce", ce.data(), ce.size());
+		//std::vector<float> ce(n_gscells());
+		//cudaMemcpy(ce.data(), Ce, sizeof(float) * n_gscells(), cudaMemcpyDeviceToHost);
+		//array2matlab("ce", ce.data(), ce.size());
 	}
 
 	double C = dump_array_sum(Ce, n_gscells());
@@ -2262,10 +2264,11 @@ struct constVec {
 	}
 };
 
+template<typename T>
 __global__ void sensitivity_kernel(int nv, 
 	int iStrain, int jStrain,
 	devArray_t<float*, 3> ui, devArray_t<float*, 3> uj,
-	float* rholist, VertexFlags* vflags, CellFlags* eflags,
+	T* rholist, VertexFlags* vflags, CellFlags* eflags,
 	float* elementSens, float volume
 ) {
 	__shared__ float KE[24][24];
@@ -2351,7 +2354,7 @@ void homo::Grid::sensitivity(int i, int j, float* sens)
 	v3_upload(uchar_g, uchar_h[j]);
 	float volume = n_cells();
 	//constVec<float> rholist(1);
-	float* rholist = rho_g;
+	auto* rholist = rho_g;
 	sensitivity_kernel << <grid_size, block_size >> > (n_gsvertices(), i, j, u, v,
 		rholist, vertflag, cellflag,
 		sens, volume);
@@ -2438,12 +2441,12 @@ void homo::Grid::reset_density(float rho)
 {
 	size_t grid_size, block_size;
 	make_kernel_param(&grid_size, &block_size, n_gscells(), 512);
-	init_array(rho_g, half(rho), n_gscells());
+	init_array(rho_g, RhoT(rho), n_gscells());
 }
 
 void homo::Grid::randDensity(void)
 {
-	randArray(&rho_g, 1, n_gscells(), half(0.f), half(1.f));
+	randArray(&rho_g, 1, n_gscells(), RhoT(0.f), RhoT(1.f));
 	pad_cell_data(rho_g);
 }
 
@@ -3061,10 +3064,14 @@ void homo::Grid::getGsElementPos(std::vector<int> hostpos[3])
 void homo::Grid::getDensity(std::vector<float>& rho, bool lexiOrder /*= false*/)
 {
 	rho.resize(n_gscells());
-	auto tmpbuf = getTempBuffer(sizeof(float) * n_gscells());
-	auto *tmpdata = tmpbuf.data<float>();
-	type_cast(tmpdata, rho_g, rho.size());
-	cudaMemcpy(rho.data(), tmpdata, sizeof(float) * rho.size(), cudaMemcpyDeviceToHost);
+	if (std::is_same_v<float, RhoT>) {
+		cudaMemcpy(rho.data(), rho_g, sizeof(float) * rho.size(), cudaMemcpyDeviceToHost);
+	} else {
+		auto tmpbuf = getTempBuffer(sizeof(float) * n_gscells());
+		auto* tmpdata = tmpbuf.data<float>();
+		type_cast(tmpdata, rho_g, rho.size());
+		cudaMemcpy(rho.data(), tmpdata, sizeof(float) * rho.size(), cudaMemcpyDeviceToHost);
+	}
 	if (!lexiOrder) 
 		return;
 	else
@@ -3671,10 +3678,10 @@ void homo::Grid::pad_vertex_data(glm::hmat3* st)
 	pad_vertex_data_imp<glm::hmat3, 1>(&st, cellReso, vertflag);
 }
 
-template<typename T>
+template<typename T,typename Rho>
 __global__ void v3_stencilOnLeft_kernel(
 	int nv, 
-	half* rholist,
+	Rho* rholist,
 	devArray_t<T*, 3> v, devArray_t<T*, 3> Kv,
 	devArray_t<int, 3> gridCellReso, 
 	VertexFlags* vflags, CellFlags* eflags

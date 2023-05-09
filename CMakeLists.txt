@@ -98,6 +98,7 @@ file(GLOB cppfiles
         homogenization/*.cpp
         matlab/*.cpp
         optimization/*.cpp
+        voxelIO/*.cpp
     )
 # file(GLOB cppfiles *.cpp)
 add_executable(homo3d ${cppfiles})

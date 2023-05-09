@@ -124,6 +124,7 @@ struct Grid {
 	std::array<int, 3> cellReso;
 
 	glm::hmat3* stencil_g[27];
+	using StencilT = glm::hmat3;
 
 	half* u_g[3];
 	half* f_g[3];
@@ -132,7 +133,8 @@ struct Grid {
 	//double* fchar_g[6][3];
 	// float* uchar_g[3];
 	half* uchar_h[6][3];
-	half* rho_g;
+	float* rho_g;
+	using RhoT = std::remove_pointer_t<decltype(rho_g)>;
 	VertexFlags* vertflag;
 	CellFlags* cellflag;
 
@@ -307,6 +309,8 @@ struct Grid {
 
 	void readDisplacement(const std::string& fname);
 
+	void restrictMatrix2matlab(std::string rname, Grid& coarseGrid);
+
 	std::string checkDeviceError(void);
 
 	void enforceCellSymmetry(half* celldata, SymmetryType sym, bool average);
@@ -357,10 +361,10 @@ struct Grid {
 	std::vector<int> getVertexLexidMap(void);
 	std::vector<int> getCellLexidMap(void);
 
-	void stencil2matlab(const std::string& name);
+	void stencil2matlab(const std::string& name, bool removePeriodDof = true);
 	void lexistencil2matlab(const std::string& name);
 
-	Eigen::SparseMatrix<double> stencil2matrix(void);
+	Eigen::SparseMatrix<double> stencil2matrix(bool removePeriodDof = true);
 
 	int vgsid2lexid_h(int gsid, bool removePeriodDof = false);
 	void vgsid2lexpos_h(int gsid, int pos[3]);

@@ -355,9 +355,9 @@ void homo::MG::test_v_cycle(void)
 	int itn = 0;
 	grids[0]->writeDensity("initrho", VoxelIOFormat::openVDB);
 #if 1
-	//grids[1]->stencil2matlab("K0", true);
-	//grids[2]->stencil2matlab("K1", true);
-	//grids[1]->restrictMatrix2matlab("R", *grids[2]);
+	grids[1]->stencil2matlab("K0", true);
+	grids[2]->stencil2matlab("K1", true);
+	grids[1]->restrictMatrix2matlab("R", *grids[2]);
 	std::vector<double> errhis;
 	double s_time = 0;
 	for (int itn = 0; itn < 50; itn++) {

@@ -249,7 +249,7 @@ size_t Grid::allocateBuffer(int nv, int ne)
 	total += nv * sizeof(VertexFlags);
 	total += ne * sizeof(CellFlags);
 	// allocate element buffer
-	rho_g = getMem().addBuffer(homoutils::formated("%s_rho", getName().c_str()), ne * sizeof(half))->data<half>();
+	rho_g = getMem().addBuffer(homoutils::formated("%s_rho", getName().c_str()), ne * sizeof(float))->data<float>();
 	total += ne * sizeof(float);
 
 	printf("%s allocated %zd MB GPU memory\n", getName().c_str(), total / 1024 / 1024);
@@ -355,7 +355,9 @@ bool homo::Grid::solveHostEquation(void)
 
 	Eigen::Matrix<double, -1, 1> x = hostBiCGSolver.solve(b);
 	if (hostBiCGSolver.info() != Eigen::Success) {
+		eigen2ConnectedMatlab("Khost", Khost);
 		printf("\033[31mhost equation failed to solve, code = %d\033[0m\n",int(hostBiCGSolver.info()));
+		eigen2ConnectedMatlab("x", x);
 		return false;
 	}
 
@@ -545,7 +547,7 @@ void homo::Grid::readDensity(const std::string& fname, VoxelIOFormat frmat)
 			for (int i = 0; i < ne; i++) {
 				rho[eidmap[i]] = rholex[i];
 			}
-			cudaMemcpy(rho_g, rho.data(), sizeof(float) * rho.size(), cudaMemcpyHostToDevice);
+			cudaMemcpy(rho_g, rho.data(), sizeof(RhoT) * rho.size(), cudaMemcpyHostToDevice);
 			pad_cell_data(rho_g);
 		} else {
 			printf("\033[31mGrid reso does not match\033[0m\n");
@@ -564,7 +566,7 @@ void homo::Grid::readDensity(const std::string& fname, VoxelIOFormat frmat)
 				rho[eidmap[lexid]] = fvalue[i];
 			}
 		}
-		cudaMemcpy(rho_g, rho.data(), sizeof(float) * rho.size(), cudaMemcpyHostToDevice);
+		cudaMemcpy(rho_g, rho.data(), sizeof(RhoT) * rho.size(), cudaMemcpyHostToDevice);
 		pad_cell_data(rho_g);
 	}
 }
@@ -780,10 +782,10 @@ void homo::Grid::array2matlab(const std::string& matname, float* hostdata, int l
 #endif
 }
 
-void homo::Grid::stencil2matlab(const std::string& name)
+void homo::Grid::stencil2matlab(const std::string& name, bool removePeriodDof /*= true*/)
 {
 #ifdef ENABLE_MATLAB
-	auto k = stencil2matrix();
+	auto k = stencil2matrix(removePeriodDof);
 	eigen2ConnectedMatlab(name, k);
 #endif
 }
@@ -825,12 +827,19 @@ void homo::Grid::lexistencil2matlab(const std::string& name)
 	eigen2ConnectedMatlab(name, K);
 }
 
-Eigen::SparseMatrix<double> homo::Grid::stencil2matrix(void)
+Eigen::SparseMatrix<double> homo::Grid::stencil2matrix(bool removePeriodDof /*= true*/)
 {
 	Eigen::SparseMatrix<double> K;
-	int ndof = cellReso[0] * cellReso[1] * cellReso[2] * 3;
+	int ndof;
+	if (removePeriodDof) {
+		ndof = cellReso[0] * cellReso[1] * cellReso[2] * 3;
+	}
+	else {
+		ndof = (cellReso[0] + 1) * (cellReso[1] + 1) * (cellReso[2] + 1) * 3;
+	}
+
 	K.resize(ndof, ndof);
-	// std::vector<half> kij(n_gsvertices());
+	//std::vector<float> kij(n_gsvertices());
 	std::vector<glm::hmat3> kij(n_gsvertices());
 	using trip = Eigen::Triplet<double>;
 	std::vector<trip> trips;
@@ -852,50 +861,65 @@ Eigen::SparseMatrix<double> homo::Grid::stencil2matrix(void)
 			int noff[3] = { i % 3 - 1, i / 3 % 3 - 1, i / 9 - 1 };
 			cudaMemcpy(kij.data(), stencil_g[i], sizeof(glm::hmat3) * n_gsvertices(), cudaMemcpyDeviceToHost);
 			for (int j = 0; j < 9; j++) {
-				//cudaMemcpy(kij.data(), stencil_g[i][j], sizeof(half) * n_gsvertices(), cudaMemcpyDeviceToHost);
+				//cudaMemcpy(kij.data(), stencil_g[i][j], sizeof(float) * n_gsvertices(), cudaMemcpyDeviceToHost);
 				for (int k = 0; k < n_gsvertices(); k++) {
 					if (vflags[k].is_fiction() || vflags[k].is_period_padding() /*|| vflags[k].is_max_boundary()*/) continue;
 					//int gscolor = vflags[k].get_gscolor();
 					int vpos[3];
 					vgsid2lexpos_h(k, vpos);
 					int oldvpos[3] = { vpos[0],vpos[1],vpos[2] };
-					if (vpos[0] >= cellReso[0] || vpos[1] >= cellReso[1] || vpos[2] >= cellReso[2]) continue;
-					int vid = vlexpos2vlexid_h(vpos, true);
+					if (removePeriodDof) {
+						if (vpos[0] >= cellReso[0] || vpos[1] >= cellReso[1] || vpos[2] >= cellReso[2]) continue;
+					}
+					else {
+						if (vpos[0] >= cellReso[0] + 1 || vpos[1] >= cellReso[1] + 1 || vpos[2] >= cellReso[2] + 1) continue;
+					}
+					int vid = vlexpos2vlexid_h(vpos, removePeriodDof);
 					if (vid == 0 && i == 20) {
 						//printf("k = %d  vid = %d  vpos = (%d, %d, %d)\n", k, vid, vpos[0], vpos[1], vpos[2]);
 					}
 					vpos[0] += noff[0]; vpos[1] += noff[1]; vpos[2] += noff[2];
-					int neiid = vlexpos2vlexid_h(vpos, true);
+					if (removePeriodDof) {
+						for (int kk = 0; kk < 3; kk++) { vpos[kk] = (vpos[kk] + cellReso[kk]) % cellReso[kk]; }
+					}
+					else {
+						bool outBound = false;
+						for (int kk = 0; kk < 3; kk++) { outBound = outBound || vpos[kk] < 0 || vpos[kk]>cellReso[kk]; }
+						if (outBound) continue;
+					}
+					int neiid = vlexpos2vlexid_h(vpos, removePeriodDof);
 					if (vid == 0) {
 						//printf("k = %d neiid = %d[%d]  off = (%d, %d, %d) nei = (%d, %d, %d)  val = %e\n",
 						//	k, neiid, i, noff[0], noff[1], noff[2], vpos[0], vpos[1], vpos[2], kij[k]);
 					}
-					if (vid == 20 && neiid == 16) {
-						//printf("vpos = (%d, %d, %d)  noff = (%d, %d, %d)\n",
-						//	oldvpos[0], oldvpos[1], oldvpos[2],
-						//	noff[0], noff[1], noff[2]);
+					if (vid == 759 && neiid == 34582) {
+						printf("vpos = (%d, %d, %d)  noff = (%d, %d, %d)\n",
+							oldvpos[0], oldvpos[1], oldvpos[2],
+							noff[0], noff[1], noff[2]);
 					}
 					trips.emplace_back(vid * 3 + j / 3, neiid * 3 + j % 3, kij[k][j % 3][j / 3]);
 				}
 			}
 		}
-	} else {
-		std::vector<half> rhohost(n_gscells());
-		cudaMemcpy(rhohost.data(), rho_g, sizeof(half) * n_gscells(), cudaMemcpyDeviceToHost);
+	}
+	else {
+		using RhoType = std::remove_pointer_t<decltype(rho_g)>;
+		std::vector<RhoType> rhohost(n_gscells());
+		cudaMemcpy(rhohost.data(), rho_g, sizeof(RhoType) * n_gscells(), cudaMemcpyDeviceToHost);
 		Eigen::Matrix<float, 24, 24> ke = getTemplateMatrix();
 		for (int i = 0; i < eflags.size(); i++) {
 			if (eflags[i].is_fiction() || eflags[i].is_period_padding()) continue;
-			float rho_p = powf(float(rhohost[i]), 3);
+			float rho_p = powf(rhohost[i], 1);
 			int epos[3];
 			egsid2lexpos_h(i, epos);
 			for (int vi = 0; vi < 8; vi++) {
 				int vipos[3] = { epos[0] + vi % 2, epos[1] + vi / 2 % 2, epos[2] + vi / 4 };
 				// todo check Dirichlet boundary
-				int vi_id = vlexpos2vlexid_h(vipos, true);
+				int vi_id = vlexpos2vlexid_h(vipos, removePeriodDof);
 				for (int vj = 0; vj < 8; vj++) {
 					int vjpos[3] = { epos[0] + vj % 2, epos[1] + vj / 2 % 2, epos[2] + vj / 4 };
 					// todo check Dirichlet boundary
-					int vj_id = vlexpos2vlexid_h(vjpos, true);
+					int vj_id = vlexpos2vlexid_h(vjpos, removePeriodDof);
 					for (int krow = 0; krow < 3; krow++) {
 						for (int kcol = 0; kcol < 3; kcol++) {
 							int ir = vi_id * 3 + krow;
@@ -1194,7 +1218,7 @@ void homo::Grid::restrict_stencil_arround_dirichelt_boundary(void) {
 				(vj % 3 - 1) * upCoarse[0],
 				(vj / 3 % 3 - 1) * upCoarse[1],
 				(vj / 9 - 1) * upCoarse[2]};
-			Eigen::Vector3i vj_pos = vj_pos_off_vi + vi_pos;
+			Eigen::Vector3i vj_pos = vi_pos + vj_pos_off_vi;
 			for (int e_off_vj_x = -upCoarse[0]; e_off_vj_x < upCoarse[0]; e_off_vj_x++)
 			{
 				for (int e_off_vj_y = -upCoarse[1]; e_off_vj_y < upCoarse[1]; e_off_vj_y++)
@@ -1268,3 +1292,40 @@ void homo::Grid::restrict_stencil_arround_dirichelt_boundary(void) {
 		}
 	}
 }
+
+void homo::Grid::restrictMatrix2matlab(std::string name, Grid& coarseGrid)
+{
+	std::vector<Eigen::Triplet<double>> triplist;
+	auto vflags = coarseGrid.getVertexflags();
+	for (int k = 0; k < coarseGrid.n_gsvertices(); k++) {
+		if (vflags[k].is_fiction() || vflags[k].is_period_padding() /*|| vflags[k].is_max_boundary()*/) continue;
+		int vidCoarse = k;
+		int vCoarsePos[3];
+		coarseGrid.vgsid2lexpos_h(k, vCoarsePos);
+		if (vCoarsePos[0] >= coarseGrid.cellReso[0] ||
+			vCoarsePos[1] >= coarseGrid.cellReso[1] || vCoarsePos[2] >= coarseGrid.cellReso[2]) {
+			continue;
+		}
+		for (int kk = 0; kk < 3; kk++) vCoarsePos[kk] = (vCoarsePos[kk] + coarseGrid.cellReso[kk]) % coarseGrid.cellReso[kk];
+		int vid = coarseGrid.vlexpos2vlexid_h(vCoarsePos, true);
+		int vpos[3] = { vCoarsePos[0] * 2, vCoarsePos[1] * 2, vCoarsePos[2] * 2 };
+		for (int i = 0; i < 27; i++) {
+			int neioffset[3] = { i % 3 - 1, i / 3 % 3 - 1, i / 9 - 1 };
+			double w = (2. - abs(neioffset[0])) * (2. - abs(neioffset[1])) * (2. - abs(neioffset[2])) / 8;
+			if (w < 0) printf("negative w = %lf\n", w);
+			int vneipos[3] = { neioffset[0] + vpos[0], neioffset[1] + vpos[1], neioffset[2] + vpos[2] };
+			for (int kk = 0; kk < 3; kk++) vneipos[kk] = (vneipos[kk] + cellReso[kk]) % cellReso[kk];
+			int vjd = vlexpos2vlexid_h(vneipos, true);
+			for (int row = 0; row < 3; row++) {
+				triplist.emplace_back(vid * 3 + row, vjd * 3 + row, w);
+			}
+		}
+	}
+	int nvfine = (cellReso[0]) * (cellReso[1]) * (cellReso[2]);
+	int nvcoarse = (coarseGrid.cellReso[0]) * (coarseGrid.cellReso[1]) * (coarseGrid.cellReso[2]);
+
+	Eigen::SparseMatrix<double> R(nvcoarse * 3, nvfine * 3);
+	R.setFromTriplets(triplist.begin(), triplist.end());
+	eigen2ConnectedMatlab(name, R);
+}
+
