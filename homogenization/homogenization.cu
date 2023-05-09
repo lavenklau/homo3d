@@ -205,10 +205,11 @@ __global__ void elasticMatrix_kernel_wise_opt(
 	}
 }
 
+template<typename T>
 __global__ void elasticMatrix_kernel_opt(
 	int nv,
 	devArray_t<devArray_t<half2*, 3>, 3> ucharlist,
-	float* rholist, VertexFlags* vflags, CellFlags* eflags,
+	T* rholist, VertexFlags* vflags, CellFlags* eflags,
 	float* elementCompliance, int pitchT
 ) {
 	__shared__ float KE[24][24];
@@ -258,7 +259,7 @@ __global__ void elasticMatrix_kernel_opt(
 	CellFlags eflag;
 	int ev[8];
 	if (elementId != -1 && !is_ghost) {
-		prho = powf(rholist[elementId], exp_penal[0]);
+		prho = powf(float(rholist[elementId]), exp_penal[0]);
 		eflag = eflags[elementId];
 		is_ghost = is_ghost || eflag.is_fiction() || eflag.is_period_padding();
 		if (!is_ghost) {
@@ -429,12 +430,12 @@ __global__ void fillHalfVertices_kernel(
 	}
 }
 
-template<int BlockSize = 256>
+template <typename T, int BlockSize = 256>
 __global__ void fillTotalVertices_kernel(
-	int nv, VertexFlags* vflags,
-	devArray_t<devArray_t<float*, 3>, 6> uchar,
-	devArray_t<devArray_t<half2*, 3>, 3> dst
-) {
+	int nv, VertexFlags *vflags,
+	devArray_t<devArray_t<T *, 3>, 6> uchar,
+	devArray_t<devArray_t<half2 *, 3>, 3> dst)
+{
 	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
 	if (tid >= nv) return;
 	int ereso[3] = { gGridCellReso[0], gGridCellReso[1], gGridCellReso[2] };
@@ -482,13 +483,13 @@ void homo::Homogenization::elasticMatrix(double C[6][6])
 	use4Bytesbank();
 	grid->useGrid_g();
 	if (config.useManagedMemory) {
-		devArray_t<devArray_t<float*, 3>, 6> ucharlist;
+		devArray_t<devArray_t<half*, 3>, 6> ucharlist;
 		for (int i = 0; i < 6; i++) {
 			for (int j = 0; j < 3; j++) {
 				ucharlist[i][j] = grid->uchar_h[i][j];
 			}
 		}
-		float* rho_g = grid->rho_g;
+		auto rho_g = grid->rho_g;
 		VertexFlags* vflags = grid->vertflag;
 		CellFlags* eflags = grid->cellflag;
 		int nv = grid->n_gsvertices();
@@ -692,15 +693,15 @@ __global__ void Sensitivity_kernel_wise_opt_2(
 
 
 // use vector stored in F(chi_0,chi_1) U(chi_2,chi_3) R(chi_4,chi_5)
-template<int BlockSize = 256>
+template <typename T, int BlockSize = 256>
 __global__ void Sensitivity_kernel_opt_2(
-	int nv, VertexFlags* vflags, CellFlags* eflags,
-	devArray_t<devArray_t<half2*, 3>, 3> ucharlist,
-	float* rholist,
+	int nv, VertexFlags *vflags, CellFlags *eflags,
+	devArray_t<devArray_t<half2 *, 3>, 3> ucharlist,
+	T *rholist,
 	devArray_t<devArray_t<float, 6>, 6> dc,
-	float* sens, float volume,
-	int pitchT, bool lexiOrder
-) {
+	float *sens, float volume,
+	int pitchT, bool lexiOrder)
+{
 	__shared__ float KE[24][24];
 	__shared__ float dC[6][6];
 	__shared__ float uChi[6][24];
@@ -787,7 +788,7 @@ __global__ void Sensitivity_kernel_opt_2(
 	// 8 warp to 32 vertices
 	if (elementId != -1 && !is_ghost) {
 		float pwn = exp_penal[0];
-		prho = pwn * powf(rholist[elementId], pwn - 1);
+		prho = pwn * powf(float(rholist[elementId]), pwn - 1);
 #pragma unroll
 		for (int iStrain = 0; iStrain < 6; iStrain++) {
 #pragma unroll
@@ -855,7 +856,6 @@ __global__ void Sensitivity_kernel_opt_2(
 	}
 }
 
-
 void homo::Homogenization::Sensitivity(float dC[6][6], float* sens, int pitchT, bool lexiOrder /*= false*/)
 {
 	grid->useGrid_g();
@@ -900,7 +900,7 @@ void homo::Homogenization::Sensitivity(float dC[6][6], float* sens, int pitchT, 
 	}
 	else {
 		printf("Sensitivity analysis using managed memory...\n");
-		devArray_t<devArray_t<float*, 3>, 6> uchar;
+		devArray_t<devArray_t<half*, 3>, 6> uchar;
 		for (int i = 0; i < 6; i++) {
 			for (int j = 0; j < 3; j++) {
 				uchar[i][j] = grid->uchar_h[i][j];

@@ -197,14 +197,15 @@ double homo::MG::solveEquation(double tol /*= 1e-2*/, bool with_guess /*= true*/
 
 double homo::MG::pcg(void)
 {
-	float* r[3], * z[3], * x[3], * p[3], * Ap[3];
+	using VType = decltype(grids[0]->u_g);
+	VType r, z, x, p, Ap;
 	//grids[0]->v3_create(r);
 	grids[0]->v3_create(z); grids[0]->v3_reset(z);
 	grids[0]->v3_create(x); grids[0]->v3_reset(x);
 	grids[0]->v3_create(p); grids[0]->v3_reset(p);
 	grids[0]->v3_create(Ap); grids[0]->v3_reset(Ap);
 	// for debug
-	float* b[3];
+	VType b;
 	grids[0]->v3_create(b); grids[0]->v3_reset(b);
 	grids[0]->v3_copy(b, grids[0]->f_g);
 
@@ -227,7 +228,7 @@ double homo::MG::pcg(void)
 
 	//grids[0]->stencil2matlab("K16");
 
-	auto precondition = [&](/*double* v[3],*/ float* Mv[3]) {
+	auto precondition = [&](/*double* v[3],*/ VType Mv) {
 		//grids[0]->setForce(v);
 		grids[0]->reset_displacement();
 		double rr = 1;
@@ -243,7 +244,7 @@ double homo::MG::pcg(void)
 		grids[0]->v3_linear(1.f, z, beta, p, p);
 	};
 
-	auto compute_Ap = [&](float* p_[3], float* Ap_[3]) {
+	auto compute_Ap = [&](VType p_, VType Ap_) {
 		grids[0]->v3_stencilOnLeft(p_, Ap_);
 	};
 
@@ -273,10 +274,10 @@ double homo::MG::pcg(void)
 		//printf("zTr = %e  pAp = %e  alpha = %e\n", zTr_last, pAp, alpha);
 
 		// update x
-		grids[0]->v3_linear(1, x, alpha, p, x);
+		grids[0]->v3_linear(1.f, x, alpha, p, x);
 
 		// update r, r is stored in grids[0]->f_g
-		grids[0]->v3_linear(1, r, -alpha, Ap, r);
+		grids[0]->v3_linear(1.f, r, -alpha, Ap, r);
 		//grids[0]->v3_copy(grids[0]->u_g, x);
 		//grids[0]->useFchar(0);
 		//grids[0]->update_residual();
@@ -352,7 +353,7 @@ void homo::MG::test_v_cycle(void)
 	//grids[0]->enforce_period_boundary(grids[0]->f_g, true);
 
 	int itn = 0;
-
+	grids[0]->writeDensity("initrho", VoxelIOFormat::openVDB);
 #if 1
 	//grids[1]->stencil2matlab("K0", true);
 	//grids[2]->stencil2matlab("K1", true);
@@ -362,6 +363,7 @@ void homo::MG::test_v_cycle(void)
 	for (int itn = 0; itn < 50; itn++) {
 		_TIC("vc");
 		v_cycle();
+		// grids[0]->gs_relaxation();
 		_TOC;
 		grids[0]->update_residual();
 		double err = grids[0]->relative_residual();
@@ -572,6 +574,7 @@ void homo::MG::test_v_cycle(void)
 
 void homo::MG::test_diag_precondition(void)
 {
+	using VType = decltype(grids[0]->u_g);
 	double d = 1e6;
 	grids[0]->diagPrecondition(d);
 	updateStencils();
@@ -579,8 +582,8 @@ void homo::MG::test_diag_precondition(void)
 	grids[0]->useFchar(0);
 	grids[0]->v3_toMatlab("f0", grids[0]->getForce());
 	double fnorm = grids[0]->v3_norm(grids[0]->f_g);
-	float* ftmp[3]; grids[0]->v3_create(ftmp); grids[0]->v3_copy(ftmp, grids[0]->getForce());
-	float* utmp[3]; grids[0]->v3_create(utmp);
+	VType ftmp; grids[0]->v3_create(ftmp); grids[0]->v3_copy(ftmp, grids[0]->getForce());
+	VType utmp; grids[0]->v3_create(utmp);
 
 	for (int itn = 0; itn < 1000; itn++) {
 		grids[0]->v3_copy(utmp, grids[0]->getDisplacement());
@@ -592,7 +595,7 @@ void homo::MG::test_diag_precondition(void)
 		//grids[0]->v3_toMatlab("ud", grids[0]->getDisplacement());
 		grids[0]->v3_toMatlab("fd", grids[0]->getForce());
 		grids[0]->v3_toMatlab("rd", grids[0]->getResidual());
-		grids[0]->v3_linear(1, ftmp, d * 8, grids[0]->getDisplacement(), grids[0]->getForce());
+		grids[0]->v3_linear(1.f, ftmp, d * 8, grids[0]->getDisplacement(), grids[0]->getForce());
 		printf("* iter %04d rr = %4.2lf%%  uch = %.4le\n", itn, rr * 100, uch);
 		if (uch < 1e-6) break;
 	}

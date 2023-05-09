@@ -32,7 +32,7 @@ int findElement(Grid& grid) {
 }
 
 void setRho(Grid& grid, int rhoid, float newval) {
-	float* p = grid.rho_g + rhoid;
+	auto* p = grid.rho_g + rhoid;
 	float newrho = newval;
 	cudaMemcpy(p, &newrho, sizeof(float), cudaMemcpyHostToDevice);
 	

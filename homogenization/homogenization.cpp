@@ -54,7 +54,7 @@ void homo::Homogenization::build(cfg::HomoConfig homconfig)
 
 	grid->test();
 
-	initTemplateMatrix(1, getMem());
+	initTemplateMatrix(1, getMem(), config.youngsModulu, config.poissonRatio);
 
 	uploadTemplaceMatrix(getTemplateMatrixFp64().data(), power_penal);
 
@@ -86,21 +86,30 @@ void homo::Homogenization::update(float* rho, int pitchT)
 
 double homo::Homogenization::elasticMatrix(float* rho, int i, int j)
 {
-	float* rho_g_bk = grid->rho_g;
+	printf("\033[31m No Support ! \033[0m\n");
+	exit(-1);
+	return 0;
+#if 0
+	auto* rho_g_bk = grid->rho_g;
 	grid->rho_g = rho;
 	update();
 	double c = elasticMatrix(i, j);
 	grid->rho_g = rho_g_bk;
 	return c;
+#endif
 }
 
 void homo::Homogenization::Sensitivity(float* rho, int i, int j, float* sens)
 {
+	printf("\033[31m No Support ! \033[0m\n");
+	exit(-1);
+#if 0
 	float* rho_g_bk = grid->rho_g;
 	grid->rho_g = rho;
 	grid->sensitivity(i, j, sens);
 	grid->rho_g = rho_g_bk;
 	return;
+#endif
 }
 
 std::shared_ptr<homo::Grid> homo::Homogenization::getGrid(void)

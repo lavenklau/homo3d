@@ -19,22 +19,25 @@ struct Lame {
 	}
 };
 
-extern __constant__ float* gU[3];
-extern __constant__ float* gF[3];
-extern __constant__ float* gR[3];
-extern __constant__ float* gUfine[3];
-extern __constant__ float* gFfine[3];
-extern __constant__ float* gRfine[3];
-extern __constant__ float* gUcoarse[3];
-extern __constant__ float* gFcoarse[3];
-extern __constant__ float* gRcoarse[3];
+extern __constant__ half* gU[3];
+extern __constant__ half* gF[3];
+extern __constant__ half* gR[3];
+extern __constant__ half* gUfine[3];
+extern __constant__ half* gFfine[3];
+extern __constant__ half* gRfine[3];
+extern __constant__ half* gUcoarse[3];
+extern __constant__ half* gFcoarse[3];
+extern __constant__ half* gRcoarse[3];
 extern __constant__ float gKE[24][24];
 extern __constant__ double gKEd[24][24];
 extern __constant__ Lame gKLame[24][24];
 extern __constant__ double gLM[5];
-extern __constant__ float* rxstencil[27][9];
-extern __constant__ float* rxCoarseStencil[27][9];
-extern __constant__ float* rxFineStencil[27][9];
+// extern __constant__ half* rxstencil[27][9];
+// extern __constant__ half* rxCoarseStencil[27][9];
+// extern __constant__ half* rxFineStencil[27][9];
+extern __constant__ glm::hmat3* rxstencil[27];
+extern __constant__ glm::hmat3* rxCoarseStencil[27];
+extern __constant__ glm::hmat3* rxFineStencil[27];
 
 extern __constant__ int gUpCoarse[3];
 extern __constant__ int gDownCoarse[3];
@@ -45,9 +48,11 @@ extern __constant__ int gGsVertexReso[3][8];
 extern __constant__ int gGsVertexEnd[8];
 extern __constant__ int gGsCellEnd[8];
 extern __constant__ int gGsFineVertexReso[3][8];
+extern __constant__ int gGsFineCellReso[3][8];
 extern __constant__ int gGsCoarseVertexReso[3][8];
 extern __constant__ int gGsCoarseVertexEnd[8];
 extern __constant__ int gGsFineVertexEnd[8];
+extern __constant__ int gGsFineCellEnd[8];
 
 //__constant__ double* guchar[6][3];
 //__constant__ double* gfchar[6][3];
@@ -77,6 +82,21 @@ __device__ void loadTemplateMatrix(volatile T KE[24][24]) {
 		else {
 			print_exception;
 		}
+	}
+	__syncthreads();
+}
+
+__device__ inline void loadTemplateMatrix(glm::mat3 KE[8][8]) {
+	for (int i = threadIdx.x; i < 8 * 8; i += blockDim.x) {
+		int ri = i % 8;
+		int cj = i / 8;
+		glm::mat3 ke;
+		for (int c = 0; c < 3; c++) {
+			for (int r = 0; r < 3; r++) {
+				ke[c][r] = gKE[ri * 3 + r][cj * 3 + c];
+			}
+		}
+		KE[ri][cj] = ke;
 	}
 	__syncthreads();
 }
