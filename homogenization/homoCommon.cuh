@@ -8,6 +8,8 @@
 
 using namespace culib;
 
+using VT = homo::Grid::VT;
+
 struct Lame {
 	short2 lammu;
 	__host__ __device__ float lam() volatile { return lammu.x; }
@@ -19,15 +21,15 @@ struct Lame {
 	}
 };
 
-extern __constant__ half* gU[3];
-extern __constant__ half* gF[3];
-extern __constant__ half* gR[3];
-extern __constant__ half* gUfine[3];
-extern __constant__ half* gFfine[3];
-extern __constant__ half* gRfine[3];
-extern __constant__ half* gUcoarse[3];
-extern __constant__ half* gFcoarse[3];
-extern __constant__ half* gRcoarse[3];
+extern __constant__ VT* gU[3];
+extern __constant__ VT* gF[3];
+extern __constant__ VT* gR[3];
+extern __constant__ VT* gUfine[3];
+extern __constant__ VT* gFfine[3];
+extern __constant__ VT* gRfine[3];
+extern __constant__ VT* gUcoarse[3];
+extern __constant__ VT* gFcoarse[3];
+extern __constant__ VT* gRcoarse[3];
 extern __constant__ float gKE[24][24];
 extern __constant__ double gKEd[24][24];
 extern __constant__ Lame gKLame[24][24];

@@ -483,7 +483,7 @@ void homo::Homogenization::elasticMatrix(double C[6][6])
 	use4Bytesbank();
 	grid->useGrid_g();
 	if (config.useManagedMemory) {
-		devArray_t<devArray_t<half*, 3>, 6> ucharlist;
+		devArray_t<devArray_t<VT*, 3>, 6> ucharlist;
 		for (int i = 0; i < 6; i++) {
 			for (int j = 0; j < 3; j++) {
 				ucharlist[i][j] = grid->uchar_h[i][j];
@@ -901,7 +901,7 @@ void homo::Homogenization::Sensitivity(float dC[6][6], float* sens, int pitchT, 
 	}
 	else {
 		printf("Sensitivity analysis using managed memory...\n");
-		devArray_t<devArray_t<half*, 3>, 6> uchar;
+		devArray_t<devArray_t<VT*, 3>, 6> uchar;
 		for (int i = 0; i < 6; i++) {
 			for (int j = 0; j < 3; j++) {
 				uchar[i][j] = grid->uchar_h[i][j];

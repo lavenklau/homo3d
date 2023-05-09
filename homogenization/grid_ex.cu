@@ -1045,6 +1045,13 @@ __global__ void restrict_stencil_otf_aos_kernel_1(
 				}
 			}
 		}
+		if (vj == 13) {
+			for (int k = 0; k < 3; k++) {
+				if (abs(st[k][k]) < 1e-4) {
+					st[k][k] = 1e-4;
+				}
+			}
+		}
 		rxstencil[vj][vid] = st;
 		// if (vj == 13)
 		// {
@@ -1137,6 +1144,13 @@ __global__ void restrict_stencil_aos_kernel_1(
 								(coarseRatio[2] - vij_off[2]) / pr;
 							st += wi * wj * glm::mat3(rxFineStencil[vj_offid][vi_neighId]);
 						}
+					}
+				}
+			}
+			if (i == 13) {
+				for (int k = 0; k < 3; k++) {
+					if (abs(st[k][k]) < 1e-4) {
+						st[k][k] = 1e-4;
 					}
 				}
 			}

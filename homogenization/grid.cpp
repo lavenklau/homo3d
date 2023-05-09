@@ -16,6 +16,8 @@
 
 using namespace homo;
 
+using VT = Grid::VT;
+
 void Grid::buildRoot(int xreso, int yreso, int zreso, GridConfig config)
 {
 	gridConfig = config;
@@ -200,11 +202,11 @@ size_t Grid::allocateBuffer(int nv, int ne)
 	size_t total = 0;
 	// allocate FEM vectors
 	for (int i = 0; i < 3; i++) {
-		u_g[i] = getMem().addBuffer(homoutils::formated("%s_u_%d", getName().c_str(), i), nv * sizeof(half) * 2)->data<half>();
-		f_g[i] = getMem().addBuffer(homoutils::formated("%s_f_%d", getName().c_str(), i), nv * sizeof(half) * 2)->data<half>();
-		r_g[i] = getMem().addBuffer(homoutils::formated("%s_r_%d", getName().c_str(), i), nv * sizeof(half) * 2)->data<half>();
+		u_g[i] = getMem().addBuffer(homoutils::formated("%s_u_%d", getName().c_str(), i), nv * sizeof(VT))->data<VT>();
+		f_g[i] = getMem().addBuffer(homoutils::formated("%s_f_%d", getName().c_str(), i), nv * sizeof(VT))->data<VT>();
+		r_g[i] = getMem().addBuffer(homoutils::formated("%s_r_%d", getName().c_str(), i), nv * sizeof(VT))->data<VT>();
 	}
-	total += nv * 9 * sizeof(half);
+	total += nv * 9 * sizeof(VT);
 	// allocate stencil buffer
 	if (!is_root) {
 		for (int i = 0; i < 27; i++) {
@@ -229,15 +231,15 @@ size_t Grid::allocateBuffer(int nv, int ne)
 	if (gridConfig.enableManagedMem) {
 		for (int i = 0; i < 6; i++) {
 			for (int j = 0; j < 3; j++) {
-				uchar_h[i][j] = getMem().addBuffer(homoutils::formated("%s_uchost_%d_%d", getName().c_str(), i, j), nv * sizeof(half), Managed)->data<half>();
+				uchar_h[i][j] = getMem().addBuffer(homoutils::formated("%s_uchost_%d_%d", getName().c_str(), i, j), nv * sizeof(VT), Managed)->data<VT>();
 			}
 			v3_reset(uchar_h[i], nv);
 		}
 	} else {
 		for (int i = 0; i < 6; i++) {
 			for (int j = 0; j < 3; j++) {
-				uchar_h[i][j] = getMem().addBuffer(homoutils::formated("%s_uchost_%d_%d", getName().c_str(), i, j), nv * sizeof(half), Hostheap)->data<half>();
-				memset(uchar_h[i][j], 0, sizeof(half) * nv);
+				uchar_h[i][j] = getMem().addBuffer(homoutils::formated("%s_uchost_%d_%d", getName().c_str(), i, j), nv * sizeof(VT), Hostheap)->data<VT>();
+				memset(uchar_h[i][j], 0, sizeof(VT) * nv);
 			}
 		}
 	}
@@ -268,17 +270,17 @@ size_t Grid::allocateBuffer(int nv, int ne)
 //	}
 //}
 
-void Grid::setForce(half* f[3])
+void Grid::setForce(VT* f[3])
 {
 	v3_copy(f_g, f);
 }
 
-half** Grid::getForce(void)
+VT** Grid::getForce(void)
 {
 	return f_g;
 }
 
-half** Grid::getDisplacement(void)
+VT** Grid::getDisplacement(void)
 {
 	return u_g;
 }
@@ -334,7 +336,7 @@ void Grid::reset_force(void)
 	v3_reset(f_g);
 }
 
-void Grid::setUchar(int k, half** uchar)
+void Grid::setUchar(int k, VT** uchar)
 {
 	//v3_copy(uchar_g[k], uchar);
 	v3_download(uchar_h[k], uchar);
@@ -447,7 +449,7 @@ float homo::Grid::diagPrecondition(float strength)
 	return strength;
 }
 
-half** homo::Grid::getResidual(void)
+VT** homo::Grid::getResidual(void)
 {
 	return r_g;
 }
@@ -621,17 +623,17 @@ void homo::Grid::readDisplacement(const std::string& fname)
 	v3_read(fname, u_g);
 }
 
-void homo::Grid::v3_upload(half* dev[3], half* hst[3])
+void homo::Grid::v3_upload(VT* dev[3], VT* hst[3])
 {
 	for (int i = 0; i < 3; i++) {
-		cudaMemcpy(dev[i], hst[i], sizeof(half) * n_gsvertices(), cudaMemcpyHostToDevice);
+		cudaMemcpy(dev[i], hst[i], sizeof(VT) * n_gsvertices(), cudaMemcpyHostToDevice);
 	}
 }
 
-void homo::Grid::v3_download(half* hst[3], half* dev[3])
+void homo::Grid::v3_download(VT* hst[3], VT* dev[3])
 {
 	for (int i = 0; i < 3; i++) {
-		cudaMemcpy(hst[i], dev[i], sizeof(half) * n_gsvertices(), cudaMemcpyDeviceToHost);
+		cudaMemcpy(hst[i], dev[i], sizeof(VT) * n_gsvertices(), cudaMemcpyDeviceToHost);
 	}
 }
 
@@ -647,26 +649,26 @@ void homo::Grid::v3_toMatlab(const std::string& mname, double* v[3], int len /*=
 #endif
 }
 
-void homo::Grid::v3_toMatlab(const std::string& mname, half* v[3], int len /*= -1*/)
+void homo::Grid::v3_toMatlab(const std::string& mname, VT* v[3], int len /*= -1*/)
 {
 	if (len == -1) len = n_gsvertices();
-	Eigen::Matrix<half, -1, 3> vmat(len, 3);
+	Eigen::Matrix<VT, -1, 3> vmat(len, 3);
 	for (int i = 0; i < 3; i++) {
-		cudaMemcpy(vmat.col(i).data(), v[i], sizeof(half) * len, cudaMemcpyDeviceToHost);
+		cudaMemcpy(vmat.col(i).data(), v[i], sizeof(VT) * len, cudaMemcpyDeviceToHost);
 	}
 	eigen2ConnectedMatlab(mname, vmat.cast<double>());
 
 }
 
-void homo::Grid::v3_write(const std::string& filename, half* v[3], int len /*= -1*/)
+void homo::Grid::v3_write(const std::string& filename, VT* v[3], int len /*= -1*/)
 {
 	if (len == -1) len = n_gsvertices();
-	std::vector<half> arr[3];
+	std::vector<VT> arr[3];
 	std::vector<float> arr_f32[3];
 	for (int i = 0; i < 3; i++) {
 		arr[i].resize(len);
 		arr_f32[i].resize(len);
-		cudaMemcpy(arr[i].data(), v[i], sizeof(half) * len, cudaMemcpyDeviceToHost);
+		cudaMemcpy(arr[i].data(), v[i], sizeof(VT) * len, cudaMemcpyDeviceToHost);
 		for (int j = 0; j < arr[i].size(); j++) {
 			arr_f32[i][j] = arr[i][j];
 		}
@@ -675,7 +677,7 @@ void homo::Grid::v3_write(const std::string& filename, half* v[3], int len /*= -
 	homoutils::writeVectors(filename, arr_f32);
 }
 
-void homo::Grid::v3_write(const std::string& filename, half* v[3], bool removePeriodDof /*= false*/) {
+void homo::Grid::v3_write(const std::string& filename, VT* v[3], bool removePeriodDof /*= false*/) {
 	auto b = v3_toMatrix(v, removePeriodDof);
 	std::ofstream ofs(filename, std::ios::binary);
 	ofs.write((const char*)b.data(), b.size() * sizeof(float));
@@ -683,7 +685,7 @@ void homo::Grid::v3_write(const std::string& filename, half* v[3], bool removePe
 	return;
 }
 
-void homo::Grid::v3_read(const std::string& filename, half* v[3])
+void homo::Grid::v3_read(const std::string& filename, VT* v[3])
 {
 	std::ifstream ifs(filename, std::ios::binary | std::ios::ate);
 	if (!ifs) {
@@ -697,20 +699,20 @@ void homo::Grid::v3_read(const std::string& filename, half* v[3])
 		exit(-1);
 	}
 	ifs.seekg(0);
-	std::vector<half> u[3];
+	std::vector<VT> u[3];
 	for (int i = 0; i < n_gsvertices(); i++) {
-		half u_vert[3];
+		VT u_vert[3];
 		ifs.read((char*)u_vert, sizeof(u_vert));
 		u[0].emplace_back(u_vert[0]); u[1].emplace_back(u_vert[1]); u[2].emplace_back(u_vert[2]);
 	}
 	ifs.close();
 	for (int i = 0; i < 3; i++) {
-		cudaMemcpy(v[i], u[i].data(), sizeof(half) * n_gsvertices(), cudaMemcpyHostToDevice);
+		cudaMemcpy(v[i], u[i].data(), sizeof(VT) * n_gsvertices(), cudaMemcpyHostToDevice);
 	}
 
 }
 
-Eigen::Matrix<float, -1, 1> homo::Grid::v3_toMatrix(half* u[3], bool removePeriodDof /*= false*/)
+Eigen::Matrix<float, -1, 1> homo::Grid::v3_toMatrix(VT* u[3], bool removePeriodDof /*= false*/)
 {
 	int nv;
 	if (removePeriodDof) {
@@ -720,11 +722,11 @@ Eigen::Matrix<float, -1, 1> homo::Grid::v3_toMatrix(half* u[3], bool removePerio
 	}
 	Eigen::Matrix<float, -1, 1> b(nv * 3, 1);
 	b.fill(0);
-	std::vector<half> vhost(n_gsvertices());
+	std::vector<VT> vhost(n_gsvertices());
 	std::vector<VertexFlags> vflags(n_gsvertices());
 	cudaMemcpy(vflags.data(), vertflag, sizeof(VertexFlags) * n_gsvertices(), cudaMemcpyDeviceToHost);
 	for (int i = 0; i < 3; i++) {
-		cudaMemcpy(vhost.data(), u[i], sizeof(half) * n_gsvertices(), cudaMemcpyDeviceToHost);
+		cudaMemcpy(vhost.data(), u[i], sizeof(VT) * n_gsvertices(), cudaMemcpyDeviceToHost);
 		for (int k = 0; k < n_gsvertices(); k++) {
 			if (vflags[k].is_fiction() || vflags[k].is_period_padding()) continue;
 			//int pos[3];
@@ -735,10 +737,10 @@ Eigen::Matrix<float, -1, 1> homo::Grid::v3_toMatrix(half* u[3], bool removePerio
 	return b;
 }
 
-void homo::Grid::v3_fromMatrix(half* u[3], const Eigen::Matrix<float, -1, 1>& b, bool hasPeriodDof /*= false*/)
+void homo::Grid::v3_fromMatrix(VT* u[3], const Eigen::Matrix<float, -1, 1>& b, bool hasPeriodDof /*= false*/)
 {
 	for (int i = 0; i < 3; i++) {
-		std::vector<half> ui(n_gsvertices());
+		std::vector<VT> ui(n_gsvertices());
 		std::fill(ui.begin(), ui.end(), 0.);
 		int nvlex;
 		if (hasPeriodDof) {
@@ -750,7 +752,7 @@ void homo::Grid::v3_fromMatrix(half* u[3], const Eigen::Matrix<float, -1, 1>& b,
 			int gsid = vlexid2gsid(k, hasPeriodDof);
 			ui[gsid] = b[k * 3 + i];
 		}
-		cudaMemcpy(u[i], ui.data(), sizeof(half) * n_gsvertices(), cudaMemcpyHostToDevice);
+		cudaMemcpy(u[i], ui.data(), sizeof(VT) * n_gsvertices(), cudaMemcpyHostToDevice);
 	}
 	enforce_period_vertex(u, false);
 	pad_vertex_data(u);
@@ -1073,7 +1075,7 @@ int homo::Grid::elexid2gsid(int lexid) {
 	return gsid;
 }
 
-void homo::Grid::enforce_period_boundary(half* v[3], bool additive /*= false*/)
+void homo::Grid::enforce_period_boundary(VT* v[3], bool additive /*= false*/)
 {
 	//if (additive) { throw std::runtime_error("additive should never be set"); }
 	enforce_period_vertex(v, additive);
@@ -1114,12 +1116,12 @@ void homo::Grid::test_gs_relaxation(void)
 	}
 	exit(0);
 }
-void homo::Grid::translateForce(int type_, half* v[3]) {
-	half t_f[3];
+void homo::Grid::translateForce(int type_, VT* v[3]) {
+	VT t_f[3];
 	if (type_ == 1) {
 		int gsid = vlexid2gsid(0, true);
 		for (int i = 0; i < 3; i++)
-			cudaMemcpy(t_f + i, v[i] + gsid, sizeof(half), cudaMemcpyDeviceToHost);
+			cudaMemcpy(t_f + i, v[i] + gsid, sizeof(VT), cudaMemcpyDeviceToHost);
 	} else if (type_ == 2) {
 		v3_average(v, t_f, true);
 	}
@@ -1186,7 +1188,7 @@ void homo::Grid::restrict_stencil_arround_dirichelt_boundary(void) {
 				int egsid = fine->elexid2gsid(eid);
 				float prho = powf(rholist[egsid], exp_penal);
 				pos2rho[{xc_off, yc_off, zc_off}] = prho;
-				printf("e(%d, %d, %d) = %4.2e\n", xc_off, yc_off, zc_off, prho);
+				// printf("e(%d, %d, %d) = %4.2e\n", xc_off, yc_off, zc_off, prho);
 			}
 		}
 	}
