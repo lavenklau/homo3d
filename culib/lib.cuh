@@ -214,9 +214,29 @@ namespace culib {
 	//constexpr size_t node_num = 213 * 213 * 213;
 	//constexpr size_t node_task_num = 204;
 
+	template <typename T1, typename T2>
+	void type_cast(T2 *dst, T1 *src, size_t len);
+
+	template <typename T1, typename T2>
+	void type_cast2D(T2 *dst, int dstPitchT, T1 *src, int srcPitchT, int xsize, int ysize);
 	template<typename DType, int N>
 	struct devArray_t {
 		DType _data[N];
+		__host__ __device__ devArray_t(std::initializer_list<DType> list) {
+			auto beg = list.begin();
+			for (int i = 0; i < list.size(); i++) {
+				_data[i] = *beg++;
+			}
+		}
+		// __host__ __device__ devArray_t(DType (&arr)[N]) {
+		// 	for (int i = 0; i < N; i++)
+		// 		_data[i] = arr[i];
+		// }
+		__host__ __device__ devArray_t(DType* arr) {
+			for (int i = 0; i < N; i++)
+				_data[i] = arr[i];
+		}
+		__host__ __device__ devArray_t(void) = default;
 		__host__ __device__ DType* data(void) { return _data; }
 		__host__ __device__ const DType* data(void) const { return _data; }
 		__host__ __device__ const DType& operator[](int k) const {
@@ -659,7 +679,7 @@ namespace culib {
 #if 1
 		//std::cout << "T = " << typeid(T).name() << std::endl;
 		auto redu = [=] __device__(auto x, auto y) {
-			return x + y;
+			return x + decltype(x)(y);
 		};
 		// not working until func has host copy
 		//  instead, using direct template parameter
@@ -745,16 +765,16 @@ namespace culib {
 		return value;
 	}
 
-	template<typename T, int BlockSize = 256>
-	T norm(T* in_datax, T* in_datay, T* in_dataz, size_t n, T* sum_dst = nullptr) {
+	template<typename T, typename Tout=T, int BlockSize = 256>
+	Tout norm(T* in_datax, T* in_datay, T* in_dataz, size_t n, Tout* sum_dst = nullptr) {
 #if 1
 		auto gen = [=] __device__(int tid) {
 			T x = in_datax[tid], y = in_datay[tid], z = in_dataz[tid];
 			return x * x + y * y + z * z;
 		};
 
-		T sum = sequence_sum<T, decltype(gen), BlockSize>(gen, n, T(0));
-		T nrm = sqrt(sum);
+		Tout sum = sequence_sum<Tout, decltype(gen), BlockSize>(gen, n, Tout(0));
+		Tout nrm = sqrt(sum);
 		if (sum_dst != nullptr) { cudaMemcpy(sum_dst, &nrm, sizeof(T), cudaMemcpyHostToDevice); }
 		return nrm;
 #else
@@ -773,15 +793,15 @@ namespace culib {
 #endif
 	}
 
-	template<typename T>
-	T dot(T* pdatax, T* pdatay, T* pdataz, T* qdatax, T* qdatay, T* qdataz, T* odata, size_t n, T* sum_dst = nullptr) {
+	template<typename T,typename Tout>
+	T dot(T* pdatax, T* pdatay, T* pdataz, T* qdatax, T* qdatay, T* qdataz, Tout* odata, size_t n, Tout* sum_dst = nullptr) {
 		// todo : use flattenned v3 rather than distinct pointer via index transform
 		auto gen = [=] __device__(int tid) {
 			T x1 = pdatax[tid], y1 = pdatay[tid], z1 = pdataz[tid];
 			T x2 = qdatax[tid], y2 = qdatay[tid], z2 = qdataz[tid];
 			return x1 * x2 + y1 * y2 + z1 * z2;
 		};
-		T sum = sequence_sum(gen, n, T(0));
+		Tout sum = sequence_sum(gen, n, Tout(0));
 		if (sum_dst != nullptr) { cudaMemcpy(sum_dst, &sum, sizeof(T), cudaMemcpyHostToDevice); }
 		return sum;
 	}
@@ -1100,6 +1120,18 @@ namespace culib {
 		void gen(curandGenerator_t& gen, float** dst, int nArray, size_t len) {
 			for (int i = 0; i < nArray; i++) {
 				curandGenerateUniform(gen, dst[i], len);
+			}
+		}
+	};
+	template<>
+	struct _randArrayGen<half> {
+		void gen(curandGenerator_t& gen, half** dst, int nArray, size_t len) {
+			_randArrayGen<float> g;
+			auto buffer = getTempBuffer(sizeof(float) * len);
+			auto bufdata = buffer.data<float>();
+			for (int i = 0; i < nArray; i++) {
+				g.gen(gen, &bufdata, 1, len);
+				type_cast(dst[i], bufdata, len);
 			}
 		}
 	};
