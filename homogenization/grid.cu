@@ -3898,9 +3898,11 @@ __global__ void v3_average_kernel(devArray_t<T*, 3> vlist, VertexFlags* vflags, 
 	int base = 0;
 	for (; base + tid < len; base += stride) {
 		int vid = base + tid;
-		VertexFlags vflag = vflags[vid];
-		if (firstReduce && vflag.is_fiction()) continue;
-		if (removePeriodDof && (vflag.is_max_boundary() || vflag.is_period_padding())) continue;
+		if (firstReduce) {
+			VertexFlags vflag = vflags[vid];
+			if (vflag.is_fiction()) continue;
+			if ((removePeriodDof && vflag.is_max_boundary()) || vflag.is_period_padding()) continue;
+		}
 		v[0] += Tout(vlist[0][vid]); v[1] += Tout(vlist[1][vid]); v[2] += Tout(vlist[2][vid]);
 	}
 
@@ -3971,7 +3973,7 @@ void homo::Grid::v3_average(half* v[3], half vMean[3], bool removePeriodDof /*= 
 	rest = grid_size;
 
 	while (rest > 1) {
-		make_kernel_param(&grid_size, &block_size, rest, 512);
+		make_kernel_param(&grid_size, &block_size, rest, 256);
 		if (le / 2 < grid_size) print_exception;
 		v3_average_kernel << <grid_size, block_size >> > (v3tmp, vertflag, rest, v3out, removePeriodDof, false);
 		cudaDeviceSynchronize();
@@ -3984,9 +3986,9 @@ void homo::Grid::v3_average(half* v[3], half vMean[3], bool removePeriodDof /*= 
 
 	int nValid;
 	if (removePeriodDof) {
-		nValid = n_gscells();
+		nValid = cellReso[0] * cellReso[1] * cellReso[2];
 	} else {
-		nValid = (cellReso[0] + 3) * (cellReso[1] + 3) * (cellReso[2] + 3);
+		nValid = (cellReso[0] + 1) * (cellReso[1] + 1) * (cellReso[2] + 1);
 	}
 	for (int i = 0; i < 3; i++) {
 		vMean[i] = vMean_f[i] / nValid;
