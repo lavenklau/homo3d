@@ -136,9 +136,21 @@ double homo::MG::solveEquation(double tol /*= 1e-2*/, bool with_guess /*= true*/
 #endif
 		if (enable_translate_displacement) grids[0]->translateForce(2, grids[0]->u_g);
 		rel_res = grids[0]->residual() / (fnorm + 1e-10);
-		if (rel_res > 1e4) {
+		if (rel_res > 10 || iter >= 199) {
 			//throw std::runtime_error("numerical failure");
-			printf("\033[31m\nnumerical explode, resetting initial guess...\033[0m\n");
+			if (rel_res > 10) {
+				printf("\033[31m\nnumerical explode, resetting initial guess...\033[0m\n");
+				std::cerr << "\033[31m\nnumerical explode, resetting initial guess...\033[0m\n";
+			} else {
+				printf("\033[31mFailed to converge\033[0m\n");
+				std::cerr << "\033[31m\nnumerical explode, resetting initial guess...\033[0m\n";
+			}
+			overflow_counter--;
+			if (overflow_counter > 0) {
+			} else {
+				printf("\033[31mFailed\033[0m\n");
+				throw std::runtime_error("MG numerical explode");
+			}
 			enable_translate_displacement = true;
 			grids[0]->v3_toMatlab("ferr", grids[0]->getForce());
 			grids[0]->v3_toMatlab("rerr", grids[0]->getResidual());
@@ -166,13 +178,6 @@ double homo::MG::solveEquation(double tol /*= 1e-2*/, bool with_guess /*= true*/
 			//	printf("rr = %4.2lf%%\n", rel_res * 100);
 			//}
 			grids[0]->reset_displacement();
-			overflow_counter--;
-			if (overflow_counter > 0) {
-				continue;
-			} else {
-				printf("\033[31mFailed\033[0m\n");
-				throw std::runtime_error("MG numerical explode");
-			}
 		}
 		//grids[0]->v3_toMatlab("r", grids[0]->r_g);
 		//if (iter % 10 == 0) {
