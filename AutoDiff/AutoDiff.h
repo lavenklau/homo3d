@@ -145,7 +145,7 @@ namespace homo {
 			std::enable_if_t<is_linearterm_v<opExp>, int> = 0>
 		__host_device_func auto make_linear(opExp&& op) {
 			using opExp_t = std::decay_t<opExp>;
-			return linear_exp_t<Scalar, opExp_t>(homostd::make_tuple(op.template cast<double>()));
+			return linear_exp_t<Scalar, opExp_t>(homostd::make_tuple(op.template cast<Scalar>()));
 		}
 
 		template<typename opExp, typename Scalar = typename LinT<opExp>::type,
