@@ -558,7 +558,7 @@ __global__ void gs_relaxation_kernel(
 	int gs_set,
 	VertexFlags* vflags,
 	// SOR relaxing factor
-	half w = 1.f
+	float w = 1.f
 ) {
 	__shared__ float sumAu[3][7][32];
 	__shared__ int gsVertexEnd[8];
@@ -657,20 +657,20 @@ __global__ void gs_relaxation_kernel(
 		//}
 
 		if (!vflag.is_period_padding()) {
-			half u[3] = { gU[0][vid], gU[1][vid], gU[2][vid] };
-			glm::hmat3 st = rxstencil[13][vid];
+			float u[3] = { gU[0][vid], gU[1][vid], gU[2][vid] };
+			glm::mat3 st = rxstencil[13][vid];
 #if !USING_SOR
 			u[0] = (gF[0][vid] - Au[0] - rxstencil[13][1][vid] * u[1] - rxstencil[13][2][vid] * u[2]) / rxstencil[13][0][vid];
 			u[1] = (gF[1][vid] - Au[1] - rxstencil[13][3][vid] * u[0] - rxstencil[13][5][vid] * u[2]) / rxstencil[13][4][vid];
 			u[2] = (gF[2][vid] - Au[2] - rxstencil[13][6][vid] * u[0] - rxstencil[13][7][vid] * u[1]) / rxstencil[13][8][vid];
 #else
-			half f[3] = {gF[0][vid], gF[1][vid], gF[2][vid]};
+			float f[3] = {gF[0][vid], gF[1][vid], gF[2][vid]};
 			// u[0] = w * (f[0] - half(Au[0]) - rxstencil[13][1][vid] * u[1] - rxstencil[13][2][vid] * u[2]) / rxstencil[13][0][vid] + (half(1) - w) * u[0];
 			// u[1] = w * (f[1] - half(Au[1]) - rxstencil[13][3][vid] * u[0] - rxstencil[13][5][vid] * u[2]) / rxstencil[13][4][vid] + (half(1) - w) * u[1];
 			// u[2] = w * (f[2] - half(Au[2]) - rxstencil[13][6][vid] * u[0] - rxstencil[13][7][vid] * u[1]) / rxstencil[13][8][vid] + (half(1) - w) * u[2];
-			u[0] = w * (f[0] - half(Au[0]) - st[1][0] * u[1] - st[2][0] * u[2]) / st[0][0] + (half(1) - w) * u[0];
-			u[1] = w * (f[1] - half(Au[1]) - st[0][1] * u[0] - st[2][1] * u[2]) / st[1][1] + (half(1) - w) * u[1];
-			u[2] = w * (f[2] - half(Au[2]) - st[0][2] * u[0] - st[1][2] * u[1]) / st[2][2] + (half(1) - w) * u[2];
+			u[0] = w * (f[0] - float(Au[0]) - st[1][0] * u[1] - st[2][0] * u[2]) / st[0][0] + (float(1) - w) * u[0];
+			u[1] = w * (f[1] - float(Au[1]) - st[0][1] * u[0] - st[2][1] * u[2]) / st[1][1] + (float(1) - w) * u[1];
+			u[2] = w * (f[2] - float(Au[2]) - st[0][2] * u[0] - st[1][2] * u[1]) / st[2][2] + (float(1) - w) * u[2];
 #endif
 
 			//if (rxstencil[13][0][vid] == 0) {
