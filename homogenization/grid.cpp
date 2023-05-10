@@ -1186,7 +1186,7 @@ void homo::Grid::restrict_stencil_arround_dirichelt_boundary(void) {
 				int egsid = fine->elexid2gsid(eid);
 				float prho = powf(rholist[egsid], exp_penal);
 				pos2rho[{xc_off, yc_off, zc_off}] = prho;
-				printf("e(%d, %d, %d) = %4.2e\n", xc_off, yc_off, zc_off, prho);
+				// printf("e(%d, %d, %d) = %4.2e\n", xc_off, yc_off, zc_off, prho);
 			}
 		}
 	}
