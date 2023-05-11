@@ -650,7 +650,7 @@ void homo::Grid::v3_toMatlab(const std::string& mname, double* v[3], int len /*=
 }
 
 void homo::Grid::v3_toMatlab(const std::string& mname, VT* v[3], int len /*= -1*/, bool removePeriodDof /*= false*/) {
-#if ENABLE_MATLAB
+#ifdef ENABLE_MATLAB
 	if (len == -1) len = n_gsvertices();
 	Eigen::Matrix<VT, -1, 3> vmat(len, 3);
 	for (int i = 0; i < 3; i++) {
