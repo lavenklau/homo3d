@@ -63,7 +63,7 @@ extern __constant__ float LAM[1];
 extern __constant__ float MU[1];
 
 
-#define print_exception printf("\033[31mexception at line %d\n\033[0m",__LINE__)
+#define print_exception printf("\033[31mexception at file %s\n, line %d\n\033[0m",__FILE__, __LINE__)
 
 template<typename T>
 __device__ void loadTemplateMatrix(volatile T KE[24][24]) {
