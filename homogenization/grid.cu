@@ -1205,7 +1205,7 @@ void homo::Grid::gs_relaxation(float w_SOR /*= 1.f*/, int times_ /*= 1*/)
 	}
 	for (int itn = 0; itn < times_; itn++) {
 		for (int i = 0; i < 8; i++) {
-			int set_id = i;
+			int set_id = 7 - i;
 			size_t grid_size, block_size;
 			int n_gs = gsVertexEnd[set_id] - (set_id == 0 ? 0 : gsVertexEnd[set_id - 1]);
 			if (assemb_otf) {
@@ -1222,7 +1222,7 @@ void homo::Grid::gs_relaxation(float w_SOR /*= 1.f*/, int times_ /*= 1*/)
 			}
 			else {
 				make_kernel_param(&grid_size, &block_size, n_gs * 13, 32 * 13);
-				gs_relaxation_kernel<<<grid_size, block_size>>>(i, vertflag, w_SOR);
+				gs_relaxation_kernel<<<grid_size, block_size>>>(set_id, vertflag, w_SOR);
 			}
 			cudaDeviceSynchronize();
 			cuda_error_check;
