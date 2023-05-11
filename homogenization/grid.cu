@@ -1128,7 +1128,7 @@ __global__ void prolongate_correction_kernel_1(
 	}
 
 	VertexFlags vflag = vflags[tid];
-	fiction |= vflag.is_fiction();
+	fiction = fiction || vflag.is_fiction();
 
 	float pr = coarseRatio[0] * coarseRatio[1] * coarseRatio[2];
 
