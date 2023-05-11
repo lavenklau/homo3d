@@ -242,7 +242,7 @@ __global__ void elasticMatrix_kernel_opt(
 
 	if (!is_ghost) { vflag = vflags[vid]; }
 
-	is_ghost = is_ghost || vflag.is_fiction() || vflag.is_period_padding();
+	is_ghost = is_ghost || vflag.is_fiction() || vflag.is_period_padding() || vflag.is_min_boundary();
 
 	GridVertexIndex indexer(gGridCellReso[0], gGridCellReso[1], gGridCellReso[2]);
 
@@ -745,7 +745,7 @@ __global__ void Sensitivity_kernel_opt_2(
 
 	VertexFlags vflag;
 	if (!is_ghost) vflag = vflags[vid];
-	if (vflag.is_fiction() || vflag.is_period_padding()) is_ghost = true;
+	if (vflag.is_fiction() || vflag.is_period_padding() || vflag.is_min_boundary()) is_ghost = true;
 
 	GridVertexIndex indexer(gGridCellReso[0], gGridCellReso[1], gGridCellReso[2]);
 
@@ -849,7 +849,7 @@ __global__ void Sensitivity_kernel_opt_2(
 		} else {
 			auto p = indexer.getPos();
 			// p -> element pos -> element pos without padding 
-			p.x -= 2; p.y -= 2; p.z -= 2;
+			p.x -= 1; p.y -= 1; p.z -= 1;
 			if (p.x < 0 || p.y < 0 || p.z < 0) print_exception;
 			int lexid = p.x + (p.y + p.z * gGridCellReso[1]) * pitchT;
 			sens[lexid] = s;

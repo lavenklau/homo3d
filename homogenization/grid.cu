@@ -4041,7 +4041,7 @@ __global__ void update_rho_kernel(
 
 	vflag = vflags[tid];
 
-	bool fiction = vflag.is_fiction() || vflag.is_period_padding();
+	bool fiction = vflag.is_fiction() || vflag.is_period_padding() || vflag.is_max_boundary();
 
 	if (fiction) return;
 
