@@ -242,7 +242,7 @@ __global__ void elasticMatrix_kernel_opt(
 
 	if (!is_ghost) { vflag = vflags[vid]; }
 
-	is_ghost = is_ghost || vflag.is_fiction() || vflag.is_period_padding();
+	is_ghost = is_ghost || vflag.is_fiction() || vflag.is_period_padding() || vflag.is_min_boundary();
 
 	GridVertexIndex indexer(gGridCellReso[0], gGridCellReso[1], gGridCellReso[2]);
 
@@ -745,7 +745,7 @@ __global__ void Sensitivity_kernel_opt_2(
 
 	VertexFlags vflag;
 	if (!is_ghost) vflag = vflags[vid];
-	if (vflag.is_fiction() || vflag.is_period_padding()) is_ghost = true;
+	if (vflag.is_fiction() || vflag.is_period_padding() || vflag.is_min_boundary()) is_ghost = true;
 
 	GridVertexIndex indexer(gGridCellReso[0], gGridCellReso[1], gGridCellReso[2]);
 
