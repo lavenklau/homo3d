@@ -649,15 +649,25 @@ void homo::Grid::v3_toMatlab(const std::string& mname, double* v[3], int len /*=
 #endif
 }
 
-void homo::Grid::v3_toMatlab(const std::string& mname, VT* v[3], int len /*= -1*/)
-{
+void homo::Grid::v3_toMatlab(const std::string& mname, VT* v[3], int len /*= -1*/, bool removePeriodDof /*= false*/) {
+#if ENABLE_MATLAB
 	if (len == -1) len = n_gsvertices();
 	Eigen::Matrix<VT, -1, 3> vmat(len, 3);
 	for (int i = 0; i < 3; i++) {
 		cudaMemcpy(vmat.col(i).data(), v[i], sizeof(VT) * len, cudaMemcpyDeviceToHost);
 	}
-	eigen2ConnectedMatlab(mname, vmat.cast<double>());
-
+	if (!removePeriodDof) {
+		eigen2ConnectedMatlab(mname, vmat.cast<double>());
+	} else {
+		int nv = cellReso[0] * cellReso[1] * cellReso[2];
+		Eigen::Matrix<VT, -1, 3> v(nv, 3);
+		for (int i = 0; i < nv; i++) {
+			int vgsid = vlexid2gsid(i, false);
+			v.row(i) = vmat.row(vgsid);
+		}
+		eigen2ConnectedMatlab(mname, v);
+	}
+#endif
 }
 
 void homo::Grid::v3_write(const std::string& filename, VT* v[3], int len /*= -1*/)

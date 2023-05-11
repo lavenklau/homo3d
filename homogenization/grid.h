@@ -337,7 +337,7 @@ struct Grid {
 	void v3_removeT(VT* u[3], VT tHost[3]);
 	void v3_linear(VT a1, VT* v1[3], VT a2, VT* v2[3], VT* v[3], int len = -1);
 	void v3_toMatlab(const std::string& mname, double* v[3], int len = -1);
-	void v3_toMatlab(const std::string& mname, VT* v[3], int len = -1);
+	void v3_toMatlab(const std::string &mname, VT *v[3], int len = -1, bool removePeriodDof = false);
 	void v3_write(const std::string& filename, VT* v[3], int len = -1);
 	void v3_write(const std::string& filename, VT* v[3], bool removePeriodDof = false);
 	void v3_read(const std::string& filename, VT* v[3]);
