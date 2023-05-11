@@ -93,7 +93,7 @@ __device__ void gsid2pos(int gsid, int color, int gsreso[3][8], int gsend[8], in
 	int gsorg[3] = { color % 2, color / 2 % 2, color / 4 };
 	int gspos[3] = { setid % gsreso[0][color], setid / gsreso[0][color] % gsreso[1][color], setid / (gsreso[0][color] * gsreso[1][color]) };
 	for (int i = 0; i < 3; i++) {
-		pos[i] = gspos[i] * 2 + gsorg[i] - 1;
+		pos[i] = gspos[i] * 2 + gsorg[i];
 	}
 }
 
@@ -178,37 +178,37 @@ __global__ void setVertexFlags_kernel(
 		int org[3] = { set_id % 2, set_id / 2 % 2, set_id / 4 };
 		int gsvreso[3] = {};
 		for (int i = 0; i < 3; i++)
-			gsvreso[i] = (cellReso[i] + 2 - org[i]) / 2 + 1;
+			gsvreso[i] = (cellReso[i] - org[i]) / 2 + 1;
 
 		int gspos[3] = { gsid % gsvreso[0], gsid / gsvreso[0] % gsvreso[1], gsid / (gsvreso[0] * gsvreso[1]) };
 		int pos[3] = { gspos[0] * 2 + org[0], gspos[1] * 2 + org[1], gspos[2] * 2 + org[2] };
 
 		// check if dirichlet boundary
-		if ((pos[0] - 1) % cellReso[0] == 0 && 
-			(pos[1] - 1) % cellReso[1] == 0 &&
-			(pos[2] - 1) % cellReso[2] == 0) {
+		if ((pos[0] ) % cellReso[0] == 0 && 
+			(pos[1] ) % cellReso[1] == 0 &&
+			(pos[2] ) % cellReso[2] == 0) {
 			flag.set_dirichlet_boundary();
 		}
 
-		// is left padding
-		if (pos[0] == 0 || pos[1] == 0 || pos[2] == 0) {
-			//flag.set_fiction();
-			flag.set_period_padding();
-		}
+		// // is left padding
+		// if (pos[0] == 0 || pos[1] == 0 || pos[2] == 0) {
+		// 	//flag.set_fiction();
+		// 	flag.set_period_padding();
+		// }
 
-		// is right padding
-		if (pos[0] == cellReso[0] + 2 || pos[1] == cellReso[1] + 2 || pos[2] == cellReso[2] + 2) {
-			//flag.set_fiction();
-			flag.set_period_padding();
-		}
+		// // is right padding
+		// if (pos[0] == cellReso[0] + 2 || pos[1] == cellReso[1] + 2 || pos[2] == cellReso[2] + 2) {
+		// 	//flag.set_fiction();
+		// 	flag.set_period_padding();
+		// }
 
 		// is boundary
-		if (pos[0] == 1) { flag.set_boundary(LEFT_BOUNDARY); }
-		if (pos[1] == 1) { flag.set_boundary(NEAR_BOUNDARY); }
-		if (pos[2] == 1) { flag.set_boundary(DOWN_BOUNDARY); }
-		if (pos[0] == cellReso[0] + 1) { flag.set_boundary(RIGHT_BOUNDARY); }
-		if (pos[1] == cellReso[1] + 1) { flag.set_boundary(FAR_BOUNDARY); }
-		if (pos[2] == cellReso[2] + 1) { flag.set_boundary(UP_BOUNDARY); }
+		if (pos[0] == 0) { flag.set_boundary(LEFT_BOUNDARY); }
+		if (pos[1] == 0) { flag.set_boundary(NEAR_BOUNDARY); }
+		if (pos[2] == 0) { flag.set_boundary(DOWN_BOUNDARY); }
+		if (pos[0] == cellReso[0] ) { flag.set_boundary(RIGHT_BOUNDARY); }
+		if (pos[1] == cellReso[1] ) { flag.set_boundary(FAR_BOUNDARY); }
+		if (pos[2] == cellReso[2] ) { flag.set_boundary(UP_BOUNDARY); }
 	} while (0);
 
 	pflag[vid] = flag;
@@ -249,39 +249,39 @@ __global__ void setCellFlags_kernel(
 		int org[3] = { set_id % 2, set_id / 2 % 2, set_id / 4 };
 		int gsreso[3] = {};
 		for (int i = 0; i < 3; i++)
-			gsreso[i] = (cellReso[i] + 1 - org[i]) / 2 + 1;
+			gsreso[i] = (cellReso[i] - 1 - org[i]) / 2 + 1;
 
 		int gspos[3] = { gsid % gsreso[0], gsid / gsreso[0] % gsreso[1], gsid / (gsreso[0] * gsreso[1]) };
 		int pos[3] = { gspos[0] * 2 + org[0], gspos[1] * 2 + org[1], gspos[2] * 2 + org[2] };
 
 		// check if dirichlet boundary
-		if (pos[0] == 1 && pos[1] == 1 && pos[2] == 1) {
+		if (pos[0] == 0 && pos[1] == 0 && pos[2] == 0) {
 			flag.set_dirichlet_boundary();
 		}
 
-		// is left padding
-		if (pos[0] == 0 || pos[1] == 0 || pos[2] == 0) {
-			//flag.set_fiction();
-			//if ((pos[0] == 0) + (pos[1] == 0) + (pos[2] == 0) == 1) {
-				flag.set_period_padding();
-			//}
-		}
+		// // is left padding
+		// if (pos[0] == 0 || pos[1] == 0 || pos[2] == 0) {
+		// 	//flag.set_fiction();
+		// 	//if ((pos[0] == 0) + (pos[1] == 0) + (pos[2] == 0) == 1) {
+		// 		flag.set_period_padding();
+		// 	//}
+		// }
 
-		// is right padding
-		if (pos[0] == cellReso[0] + 1 || pos[1] == cellReso[1] + 1 || pos[2] == cellReso[2] + 1) {
-			//flag.set_fiction();
-			//if ((pos[0] == cellReso[0] + 1) + (pos[1] == cellReso[1] + 1) + (pos[2] == cellReso[1] + 1) == 1) {
-				flag.set_period_padding();
-			//}
-		}
+		// // is right padding
+		// if (pos[0] == cellReso[0] + 1 || pos[1] == cellReso[1] + 1 || pos[2] == cellReso[2] + 1) {
+		// 	//flag.set_fiction();
+		// 	//if ((pos[0] == cellReso[0] + 1) + (pos[1] == cellReso[1] + 1) + (pos[2] == cellReso[1] + 1) == 1) {
+		// 		flag.set_period_padding();
+		// 	//}
+		// }
 
 		// is boundary
-		if (pos[0] == 1) { flag.set_boundary(LEFT_BOUNDARY); }
-		if (pos[1] == 1) { flag.set_boundary(NEAR_BOUNDARY); }
-		if (pos[2] == 1) { flag.set_boundary(DOWN_BOUNDARY); }
-		if (pos[0] == cellReso[0]) { flag.set_boundary(RIGHT_BOUNDARY); }
-		if (pos[1] == cellReso[1]) { flag.set_boundary(FAR_BOUNDARY); }
-		if (pos[2] == cellReso[2]) { flag.set_boundary(UP_BOUNDARY); }
+		if (pos[0] == 0) { flag.set_boundary(LEFT_BOUNDARY); }
+		if (pos[1] == 0) { flag.set_boundary(NEAR_BOUNDARY); }
+		if (pos[2] == 0) { flag.set_boundary(DOWN_BOUNDARY); }
+		if (pos[0] == cellReso[0] - 1) { flag.set_boundary(RIGHT_BOUNDARY); }
+		if (pos[1] == cellReso[1] - 1) { flag.set_boundary(FAR_BOUNDARY); }
+		if (pos[2] == cellReso[2] - 1) { flag.set_boundary(UP_BOUNDARY); }
 	} while (0);
 
 	pflag[tid] = flag;
@@ -1867,7 +1867,7 @@ __global__ void enforce_unit_macro_strain_kernel(
 			int neighEid = indexer.neighElement(ei, gGsCellEnd, gGsCellReso).getId();
 			if (neighEid == -1) continue;
 			CellFlags eflag = eflags[neighEid];
-			if (eflag.is_fiction() || eflag.is_period_padding()) continue;
+			//if (eflag.is_fiction() || eflag.is_period_padding()) continue;
 			float rho_penal = powf(rholist[neighEid], exp_penal[0]);
 			int kirow = (7 - ei) * 3;
 #if USE_LAME_MATRIX
@@ -2505,7 +2505,7 @@ __global__ void lexi2gsorder_kernel(T* src, T* dst,
 	int srcpos[3] = { tid % srcreso[0] , tid / srcreso[0] % srcreso[1] , tid / (srcreso[0] * srcreso[1]) };
 	// if not padding, add padding
 	if (!srcpaded) {
-		srcpos[0] += 1; srcpos[1] += 1; srcpos[2] += 1;
+		// srcpos[0] += 1; srcpos[1] += 1; srcpos[2] += 1;
 	}
 	int gsorg[3] = { srcpos[0] % 2, srcpos[1] % 2, srcpos[2] % 2 };
 	int gscolor = gsorg[0] + gsorg[1] * 2 + gsorg[2] * 4;
@@ -2513,7 +2513,7 @@ __global__ void lexi2gsorder_kernel(T* src, T* dst,
 	int gsreso[3] = {};
 	for (int k = 0; k < 3; k++) {
 		// last index - org / 2, should padd 1
-		gsreso[k] = (srcreso[k] + 1 - gsorg[k]) / 2 + 1;
+		gsreso[k] = (srcreso[k] - 1 - gsorg[k]) / 2 + 1;
 	}
 
 	int setpos[3] = { srcpos[0] / 2, srcpos[1] / 2, srcpos[2] / 2 };
@@ -2723,6 +2723,7 @@ __global__ void pad_vertex_data_kernel(int nvfacepad, int nvedgepadd, devArray_t
 
 template <typename T, int N>
 void pad_vertex_data_imp(T **v, std::array<int, 3> cellReso, VertexFlags* vertflag) {
+	return;
 	int nvpadface = (cellReso[0] + 1) * (cellReso[1] + 1) +
 		(cellReso[1] + 1) * (cellReso[2] + 1) +
 		(cellReso[0] + 1) * (cellReso[2] + 1);
@@ -3334,6 +3335,7 @@ __global__ void pad_vertex_data_kernel(int nvfacepad, int nvedgepadd, devArray_t
 
 void homo::Grid::pad_vertex_data(double* v[3])
 {
+	return;
 	pad_vertex_data_imp<double, 3>(v, cellReso, vertflag);
 }
 
@@ -3425,22 +3427,22 @@ __global__ void testVflags_kernel(int nv, VertexFlags* vflags) {
 	}
 
 	if (vflag.is_set(LEFT_BOUNDARY)) {
-		if (pos.x != 1) { print_exception; }
+		if (pos.x != 0) { print_exception; }
 	}
 	if (vflag.is_set(RIGHT_BOUNDARY)) {
-		if (pos.x != gGridCellReso[0] + 1) print_exception;
+		if (pos.x != gGridCellReso[0]) print_exception;
 	}
 	if (vflag.is_set(NEAR_BOUNDARY)) {
-		if (pos.y != 1)print_exception;
+		if (pos.y != 0)print_exception;
 	}
 	if (vflag.is_set(FAR_BOUNDARY)) {
-		if (pos.y != gGridCellReso[1] + 1) print_exception;
+		if (pos.y != gGridCellReso[1]) print_exception;
 	}
 	if (vflag.is_set(DOWN_BOUNDARY)) {
-		if (pos.z != 1) print_exception;
+		if (pos.z != 0) print_exception;
 	}
 	if (vflag.is_set(UP_BOUNDARY)) {
-		if (pos.z != gGridCellReso[2] + 1) print_exception;
+		if (pos.z != gGridCellReso[2]) print_exception;
 	}
 }
 
@@ -3562,7 +3564,7 @@ __global__ void v3_wave_kernel(int nv, VertexFlags* vflags, devArray_t<T, 3> rad
 	GridVertexIndex indexer(gGridCellReso[0], gGridCellReso[1], gGridCellReso[2]);
 	indexer.locate(tid, vflag.get_gscolor(), gGsVertexEnd);
 	auto pos = indexer.getPos();
-	float u[3] = { sinf(float(rad[0]) * (pos.x - 1)) , sinf(float(rad[1]) * (pos.y - 1)) , sinf(float(rad[2]) * (pos.z - 1)) };
+	float u[3] = { sinf(float(rad[0]) * (pos.x)) , sinf(float(rad[1]) * (pos.y)) , sinf(float(rad[2]) * (pos.z)) };
 	for (int i = 0; i < 3; i++) {
 		v[i][tid] = u[i];
 	}
@@ -3670,16 +3672,19 @@ float homo::Grid::v3_dot(VT* v[3], VT* u[3], bool removePeriodDof /*= false*/, i
 
 void homo::Grid::pad_vertex_data(float* v[3])
 {
+	return;
 	pad_vertex_data_imp<float, 3>(v, cellReso, vertflag);
 }
 
 void homo::Grid::pad_vertex_data(half* v[3])
 {
+	return;
 	pad_vertex_data_imp<half, 3>(v, cellReso, vertflag);
 }
 
 void homo::Grid::pad_vertex_data(glm::hmat3* st)
 {
+	return;
 	pad_vertex_data_imp<glm::hmat3, 1>(&st, cellReso, vertflag);
 }
 
@@ -4052,7 +4057,7 @@ __global__ void update_rho_kernel(
 
 	auto p = indexer.getPos();
 	// to element pos without padding
-	p.x -= 1; p.y -= 1; p.z -= 1;
+	// p.x -= 1; p.y -= 1; p.z -= 1;
 
 	int sid;
 	if (srcPitchT <= 0)
@@ -4176,6 +4181,7 @@ __global__ void pad_data_kernel(
 
 template <typename T>
 void pad_cell_data_imp(T *e, CellFlags *eflags, std::array<int, 3> cellReso, int gsCellReso[3][8], int gsCellSetEnd[8]) {
+	return;
 	int nsrcpadd = 2 * (cellReso[0] * cellReso[1] + cellReso[1] * cellReso[2] + cellReso[0] * cellReso[2]);
 	devArray_t<int, 3> resolist{cellReso[0], cellReso[1], cellReso[2]};
 	devArray_t<int, 3> resopad{cellReso[0], cellReso[1], cellReso[2]};
@@ -4198,10 +4204,12 @@ void pad_cell_data_imp(T *e, CellFlags *eflags, std::array<int, 3> cellReso, int
 }
 
 void homo::Grid::pad_cell_data(float* e) {
+	return;
 	pad_cell_data_imp(e, cellflag, cellReso, gsCellReso, gsCellSetEnd);
 }
 
 void homo::Grid::pad_cell_data(half *e) {
+	return;
 	pad_cell_data_imp(e, cellflag, cellReso, gsCellReso, gsCellSetEnd);
 }
 

@@ -144,9 +144,9 @@ struct GridVertexIndex {
 		org.y = set_id / 2 % 2;
 		org.z = set_id / 4;
 
-		gsVertexReso.x = (cellReso.x + 2 - org.x) / 2 + 1;
-		gsVertexReso.y = (cellReso.y + 2 - org.y) / 2 + 1;
-		gsVertexReso.z = (cellReso.z + 2 - org.z) / 2 + 1;
+		gsVertexReso.x = (cellReso.x - org.x) / 2 + 1;
+		gsVertexReso.y = (cellReso.y - org.y) / 2 + 1;
+		gsVertexReso.z = (cellReso.z - org.z) / 2 + 1;
 
 		int gsid = set_id == 0 ? vid : vid - gsVertexEnd[set_id - 1];
 
@@ -166,6 +166,7 @@ struct GridVertexIndex {
 	// id must be a positive number less than 27
 	//template<bool debug = false >
 	__device__ IDColor neighVertex(int id, volatile int* gsVertexEnd, volatile int gsVertexResoAll[3][8]/*, bool debug = false*/) {
+#if 0
 		unsigned int uintNeighoffset = 0;
 		cub::BFI(uintNeighoffset, uintNeighoffset, id % 3 - 1, 0, 8);
 		cub::BFI(uintNeighoffset, uintNeighoffset, id / 3 % 3 - 1, 8, 8);
@@ -219,6 +220,25 @@ struct GridVertexIndex {
 			neipos[2] * gsVertexResoAll[0][neigh_setid] * gsVertexResoAll[1][neigh_setid];
 
 		return { {neigh_id,neigh_setid} };
+#else
+		int neipos[3] = {
+			gsPos.x * 2 + org.x + id % 3 - 1,
+			gsPos.y * 2 + org.y + id / 3 % 3 - 1,
+			gsPos.z * 2 + org.z + id / 9 - 1 };
+		neipos[0] = (neipos[0] + cellReso.x) % cellReso.x;
+		neipos[1] = (neipos[1] + cellReso.y) % cellReso.y;
+		neipos[2] = (neipos[2] + cellReso.z) % cellReso.z;
+		int neiGspos[3] = { neipos[0] / 2,
+						   neipos[1] / 2,
+						   neipos[2] / 2 };
+		int neiGscolor = neipos[0] % 2 + (neipos[1] % 2) * 2 + (neipos[2] % 2) * 4;
+		int base = neiGscolor == 0 ? 0 : gsVertexEnd[neiGscolor - 1];
+		int neiid = base +
+			neiGspos[0] +
+			neiGspos[1] * gsVertexResoAll[0][neiGscolor] +
+			neiGspos[2] * gsVertexResoAll[0][neiGscolor] * gsVertexResoAll[1][neiGscolor];
+		return { {neiid, neiGscolor} };
+#endif
 	}
 
 	// id is in 0~7
@@ -272,11 +292,17 @@ struct GridVertexIndex {
 			gsPos.y * 2 + org.y + id / 2 % 2 - 1,
 			gsPos.z * 2 + org.z + id / 4 - 1
 		};
+#if 0
 		if (cellpos[0] < 0 || cellpos[0] >= cellReso.x + 2 ||
 			cellpos[1] < 0 || cellpos[1] >= cellReso.y + 2 ||
 			cellpos[2] < 0 || cellpos[2] >= cellReso.z + 2) {
 			return { {-1,-1} };
 		}
+#else
+		cellpos[0] = (cellpos[0] + cellReso.x) % cellReso.x;
+		cellpos[1] = (cellpos[1] + cellReso.y) % cellReso.y;
+		cellpos[2] = (cellpos[2] + cellReso.z) % cellReso.z;
+#endif
 		int egspos[3] = { cellpos[0] / 2, cellpos[1] / 2, cellpos[2] / 2 };
 		int esetid = cellpos[0] % 2 + cellpos[1] % 2 * 2 + cellpos[2] % 2 * 4;
 		//if (esetid < 0 || esetid > 7)
@@ -294,10 +320,10 @@ struct GridVertexIndex {
 
 	__device__ IDColor neighCoarseVertex(int id, int coarseRatio[3], volatile int gsCoarseVertexEnd[8], volatile int gsCoarseVertexReso[3][8], volatile int remainder[3]) {
 		short3 pos;
-		pos.x = gsPos.x * 2 + org.x - 1;
-		pos.y = gsPos.y * 2 + org.y - 1;
-		pos.z = gsPos.z * 2 + org.z - 1;
-		
+		pos.x = gsPos.x * 2 + org.x;
+		pos.y = gsPos.y * 2 + org.y;
+		pos.z = gsPos.z * 2 + org.z;
+
 		if (pos.x < 0 || pos.y < 0 || pos.z < 0) print_exception;
 
 		//bool debug = false;
@@ -318,9 +344,9 @@ struct GridVertexIndex {
 		if (abs(idOff.x - remainder[0]) < coarseRatio[0] &&
 			abs(idOff.y - remainder[1]) < coarseRatio[1] &&
 			abs(idOff.z - remainder[2]) < coarseRatio[2]) {
-			pos.x = pos.x / coarseRatio[0] + idoffCoarse.x + 1;
-			pos.y = pos.y / coarseRatio[1] + idoffCoarse.y + 1;
-			pos.z = pos.z / coarseRatio[2] + idoffCoarse.z + 1;
+			pos.x = pos.x / coarseRatio[0] + idoffCoarse.x;
+			pos.y = pos.y / coarseRatio[1] + idoffCoarse.y;
+			pos.z = pos.z / coarseRatio[2] + idoffCoarse.z;
 		} else {
 			return { {-1,-1} };
 		}
@@ -349,10 +375,10 @@ struct GridVertexIndex {
 
 	__device__ void neighCoarseVertex(int neiVid[8], float w[8], int coarseRatio[3], volatile int gsCoarseVertexEnd[8], volatile int gsCoarseVertexReso[3][8], volatile int remainder[3]) {
 		short3 pos;
-		pos.x = gsPos.x * 2 + org.x - 1;
-		pos.y = gsPos.y * 2 + org.y - 1;
-		pos.z = gsPos.z * 2 + org.z - 1;
-		
+		pos.x = gsPos.x * 2 + org.x;
+		pos.y = gsPos.y * 2 + org.y;
+		pos.z = gsPos.z * 2 + org.z;
+
 		if (pos.x < 0 || pos.y < 0 || pos.z < 0) print_exception;
 
 		remainder[0] = pos.x % coarseRatio[0];
@@ -363,6 +389,9 @@ struct GridVertexIndex {
 
 		float wc = coarseRatio[0] * coarseRatio[1] * coarseRatio[2];
 
+		int coarsereso[3] = {
+			cellReso.x / coarseRatio[0], cellReso.y / coarseRatio[1], cellReso.z / coarseRatio[2]};
+
 #pragma unroll
 		for (int id = 0; id < 8; id++) {
 			short3 idoffCoarse = { id % 2, id / 2 % 2, id / 4 };
@@ -370,9 +399,15 @@ struct GridVertexIndex {
 			w[id] = (coarseRatio[0] - abs(idOff.x - remainder[0])) *
 					(coarseRatio[1] - abs(idOff.y - remainder[1])) *
 					(coarseRatio[2] - abs(idOff.z - remainder[2])) / wc;
-			pos.x = coarseBase.x + idoffCoarse.x + 1;
-			pos.y = coarseBase.y + idoffCoarse.y + 1;
-			pos.z = coarseBase.z + idoffCoarse.z + 1;
+			pos.x = coarseBase.x + idoffCoarse.x;
+			pos.y = coarseBase.y + idoffCoarse.y;
+			pos.z = coarseBase.z + idoffCoarse.z;
+			if (pos.x > coarsereso[0] ||
+				pos.y > coarsereso[1] ||
+				pos.z > coarsereso[2]) {
+				neiVid[id] = -1;
+				continue;
+			}
 			int color = pos.x % 2 + pos.y % 2 * 2 + pos.z % 2 * 4;
 			int base = color == 0 ? 0 : gsCoarseVertexEnd[color - 1];
 			int gsid = base +
@@ -386,9 +421,9 @@ struct GridVertexIndex {
 
 	__device__ IDColor neighFineVertex(int offset[3], int refineRatio[3], int gsFineVertexEnd[8], int gsFineVertexReso[3][8], bool circleAccess = false) {
 		short3 pos;
-		pos.x = gsPos.x * 2 + org.x - 1;
-		pos.y = gsPos.y * 2 + org.y - 1;
-		pos.z = gsPos.z * 2 + org.z - 1;
+		pos.x = gsPos.x * 2 + org.x;
+		pos.y = gsPos.y * 2 + org.y;
+		pos.z = gsPos.z * 2 + org.z;
 		
 		//bool debug = pos.x == 0 && pos.y == 1 && pos.z == 1 &&
 		//	offset[0] == 0 && offset[1] == -1 && offset[2] == 0;
@@ -396,7 +431,8 @@ struct GridVertexIndex {
 		pos.x = pos.x * refineRatio[0] + offset[0];
 		pos.y = pos.y * refineRatio[1] + offset[1];
 		pos.z = pos.z * refineRatio[2] + offset[2];
-		if (circleAccess) {
+		//if (circleAccess) 
+		{
 			int freso = cellReso.x * refineRatio[0];
 			pos.x = (pos.x + freso) % freso;
 			freso = cellReso.y * refineRatio[1];
@@ -404,7 +440,7 @@ struct GridVertexIndex {
 			freso = cellReso.z * refineRatio[2];
 			pos.z = (pos.z + freso) % freso;
 		}
-		pos.x += 1; pos.y += 1; pos.z += 1;
+		// pos.x += 1; pos.y += 1; pos.z += 1;
 
 		int posColor = pos.x % 2 + pos.y % 2 * 2 + pos.z % 2 * 4;
 		int base = posColor == 0 ? 0 : gsFineVertexEnd[posColor - 1];
@@ -521,7 +557,7 @@ __device__ void elementMacroDisplacement(int iStrain, T uchi[24]) {
 __host__ __device__ inline int lexi2gs(int lexpos[3], int gsreso[3][8], int gsend[8], bool padded = false) {
 	int pos[3] = { lexpos[0], lexpos[1], lexpos[2] };
 	if (!padded) { 
-		pos[0] += 1; pos[1] += 1; pos[2] += 1;
+		// pos[0] += 1; pos[1] += 1; pos[2] += 1;
 	}
 	int org[3] = { pos[0] % 2, pos[1] % 2, pos[2] % 2 };
 	int gscolor = org[0] + org[1] * 2 + org[2] * 4;
@@ -536,7 +572,7 @@ __host__ __device__ inline int lexi2gs(int lexpos[3], int gsreso[3][8], int gsen
 __host__ __device__ inline int lexi2gs(short3 lexpos, int gsreso[3][8], int gsend[8], bool padded = false) {
 	int pos[3] = { lexpos.x, lexpos.y, lexpos.z };
 	if (!padded) { 
-		pos[0] += 1; pos[1] += 1; pos[2] += 1;
+		// pos[0] += 1; pos[1] += 1; pos[2] += 1;
 	}
 	int org[3] = { pos[0] % 2, pos[1] % 2, pos[2] % 2 };
 	int gscolor = org[0] + org[1] * 2 + org[2] * 4;

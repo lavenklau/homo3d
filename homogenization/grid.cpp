@@ -160,7 +160,7 @@ std::pair<int, int> Grid::countGS(void)
 	for (int i = 0; i < 8; i++) {
 		int org[3] = { i % 2, i / 2 % 2, i / 4 };
 		for (int k = 0; k < 3; k++) {
-			gsVertexReso[k][i] = (cellReso[k] - org[k] + 2) / 2 + 1;
+			gsVertexReso[k][i] = (cellReso[k] - org[k]) / 2 + 1;
 		}
 		n_gsvertex[i] = gsVertexReso[0][i] * gsVertexReso[1][i] * gsVertexReso[2][i];
 		gsVertexSetValid[i] = n_gsvertex[i];
@@ -181,7 +181,7 @@ std::pair<int, int> Grid::countGS(void)
 	for (int i = 0; i < 8; i++) {
 		int org[3] = { i % 2, i / 2 % 2, i / 4 };
 		for (int k = 0; k < 3; k++) {
-			gsCellReso[k][i] = ((cellReso[k] + 1 - org[k]) / 2 + 1);
+			gsCellReso[k][i] = ((cellReso[k] - 1 - org[k]) / 2 + 1);
 		}
 		n_gscell[i] = gsCellReso[0][i] * gsCellReso[1][i] * gsCellReso[2][i];
 		gsCellSetValid[i] = n_gscell[i];
@@ -310,9 +310,10 @@ void Grid::useFchar(int k)
 	useGrid_g();
 	enforce_unit_macro_strain(k);
 	//setForce(fchar_g[k]);
-	enforce_dirichlet_boundary(f_g);
-	enforce_period_vertex(f_g, true);
+	//enforce_dirichlet_boundary(f_g);
+	//enforce_period_vertex(f_g, true);
 	pad_vertex_data(f_g);
+	//translateForce(2, f_g);
 	// DEBUG
 	if (0) {
 		char buf[100];
@@ -405,11 +406,22 @@ void homo::Grid::assembleHostMatrix(void)
 	}
 	
 #else
+
 	Eigen::Matrix<double, -1, -1> fk(Khost);
+#if 1
 	Eigen::FullPivLU<Eigen::Matrix<double, -1, -1>> dec;
 	dec.setThreshold(5e-2);
 	dec.compute(fk);
 	transBase = dec.kernel();
+#else
+	Eigen::BDCSVD<Eigen::Matrix<double, -1, -1>> svd(fk.rows(), fk.cols(), Eigen::ComputeFullV);
+	svd.setThreshold(2e-2);
+	svd.compute(fk);
+	int rank = svd.rank();
+	transBase = svd.matrixV().block(0, rank, fk.rows(), fk.cols() - rank);
+	
+#endif
+
 #endif
 	for (int i = 0; i < transBase.cols(); i++) {
 		for (int j = 0; j < i; j++) {
@@ -649,14 +661,24 @@ void homo::Grid::v3_toMatlab(const std::string& mname, double* v[3], int len /*=
 #endif
 }
 
-void homo::Grid::v3_toMatlab(const std::string& mname, VT* v[3], int len /*= -1*/)
+void homo::Grid::v3_toMatlab(const std::string& mname, VT* v[3], int len /*= -1*/, bool removePeriodDof /*= false*/)
 {
 	if (len == -1) len = n_gsvertices();
 	Eigen::Matrix<VT, -1, 3> vmat(len, 3);
 	for (int i = 0; i < 3; i++) {
 		cudaMemcpy(vmat.col(i).data(), v[i], sizeof(VT) * len, cudaMemcpyDeviceToHost);
 	}
-	eigen2ConnectedMatlab(mname, vmat.cast<double>());
+	if (!removePeriodDof) {
+		eigen2ConnectedMatlab(mname, vmat.cast<double>());
+	} else {
+		int nv = cellReso[0] * cellReso[1] * cellReso[2];
+		Eigen::Matrix<VT, -1, 3> v(nv, 3);
+		for (int i = 0; i < nv; i++) {
+			int vgsid = vlexid2gsid(i, false);
+			v.row(i) = vmat.row(vgsid);
+		}
+		eigen2ConnectedMatlab(mname, v);
+	}
 
 }
 
@@ -972,9 +994,9 @@ void homo::Grid::vgsid2lexpos_h(int gsid, int pos[3])
 	//	gsVertexSetEnd[color - 1], gspos[0], gspos[1], gspos[2]);
 
 	int lexpos[3] = {
-		gspos[0] * 2 + color % 2 - 1,
-		gspos[1] * 2 + color / 2 % 2 - 1,
-		gspos[2] * 2 + color / 4 - 1
+		gspos[0] * 2 + color % 2 ,
+		gspos[1] * 2 + color / 2 % 2 ,
+		gspos[2] * 2 + color / 4 
 	};
 
 	//for (int i = 0; i < 3; i++) lexpos[i] = (lexpos[i] + cellReso[i]) % cellReso[i];
@@ -999,10 +1021,9 @@ void homo::Grid::egsid2lexpos_h(int gsid, int pos[3])
 		setid / (gsCellReso[0][color] * gsCellReso[1][color])
 	};
 	int lexpos[3] = {
-		gspos[0] * 2 + color % 2 - 1,
-		gspos[1] * 2 + color / 2 % 2 - 1,
-		gspos[2] * 2 + color / 4 - 1
-	};
+		gspos[0] * 2 + color % 2,
+		gspos[1] * 2 + color / 2 % 2,
+		gspos[2] * 2 + color / 4};
 
 	//for (int i = 0; i < 3; i++) lexpos[i] = (lexpos[i] + cellReso[i]) % cellReso[i];
 
@@ -1045,9 +1066,9 @@ int homo::Grid::vlexid2gsid(int lexid, bool hasPeriodDof /*= false*/)
 	} else {
 		for (int i = 0; i < 3; i++) vreso[i] = cellReso[i];
 	}
-	pos[0] = lexid % vreso[0] + 1;
-	pos[1] = lexid / vreso[0] % vreso[1] + 1;
-	pos[2] = lexid / (vreso[0] * vreso[1]) + 1;
+	pos[0] = lexid % vreso[0];
+	pos[1] = lexid / vreso[0] % vreso[1];
+	pos[2] = lexid / (vreso[0] * vreso[1]);
 	int gspos[3] = { pos[0] / 2,pos[1] / 2,pos[2] / 2 };
 	int color = pos[0] % 2 + pos[1] % 2 * 2 + pos[2] % 2 * 4;
 	int setid = gspos[0] +
@@ -1062,9 +1083,9 @@ int homo::Grid::elexid2gsid(int lexid) {
 	int pos[3];
 	int ereso[3];
 	for (int i = 0; i < 3; i++) ereso[i] = cellReso[i];
-	pos[0] = lexid % ereso[0] + 1;
-	pos[1] = lexid / ereso[0] % ereso[1] + 1;
-	pos[2] = lexid / (ereso[0] * ereso[1]) + 1;
+	pos[0] = lexid % ereso[0];
+	pos[1] = lexid / ereso[0] % ereso[1];
+	pos[2] = lexid / (ereso[0] * ereso[1]);
 	int gspos[3] = { pos[0] / 2,pos[1] / 2,pos[2] / 2 };
 	int color = pos[0] % 2 + pos[1] % 2 * 2 + pos[2] % 2 * 4;
 	int setid = gspos[0] +
