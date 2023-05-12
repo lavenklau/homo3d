@@ -519,3 +519,9 @@ __host__ __device__ inline int lexi2gs(short3 lexpos, int gsreso[3][8], int gsen
 	return gsid;
 }
 
+#define NO_SUPPORT_ERROR                                                               \
+	do                                                                                 \
+	{                                                                                  \
+		printf("Error : No support!\n -> file %s\n -> line %d\n", __FILE__, __LINE__); \
+		throw std::runtime_error("no support");                                        \
+	} while (0)
