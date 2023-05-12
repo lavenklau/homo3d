@@ -449,7 +449,7 @@ void homo::Grid::assembleHostMatrix(void)
 #else
 	Eigen::Matrix<double, -1, -1> fk(Khost);
 	Eigen::FullPivLU<Eigen::Matrix<double, -1, -1>> dec;
-	dec.setThreshold(5e-2);
+	dec.setThreshold(5e-4);
 	dec.compute(fk);
 	transBase = dec.kernel();
 #endif
@@ -1339,8 +1339,9 @@ void homo::Grid::restrict_stencil_arround_dirichelt_boundary(void) {
 									(upCoarse[2] - abs(e_vj_off[2])) / pr;
 								if (e_vi_d || e_vj_d)
 								{
-									if (e_vi == e_vj)
-										st[vj] += wi * wj * glm::dmat3(1.);
+									if (e_vi == e_vj) {
+										st[vj] += wi * wj * glm::dmat3(KE(0, 0) * 1e-4);
+									}
 								}
 								else{
 									st[vj] += wi * wj * ke[e_vi][e_vj] * prho;
