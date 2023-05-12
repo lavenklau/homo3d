@@ -6,7 +6,7 @@ DEFINE_string(obj, "bulk", "objective to be optimized: bulk, shear, npr, [custom
 DEFINE_string(init, "randc", "init density type, can be: rand, P, D, G, IWP");
 DEFINE_string(sym, "reflect6", "symmetry catogory, can be: simp3, none");
 DEFINE_double(vol, 0.3, "volume ratio");
-DEFINE_double(E, 1e6, "Young's modulu of base material");
+DEFINE_double(E, 1e1, "Young's modulu of base material");
 DEFINE_double(mu, 0.3, "Poisson ratio of base material");
 DEFINE_string(prefix, "", "output path prefix, the final output path is \'prefix+filename\'");
 DEFINE_int32(logrho, 0, "log density field per steps, set 0 to disable log");

@@ -34,7 +34,7 @@ make -j4
 * `-init`: the method for initializing the density field, the common and default option is `randc`, which set the initialization via  a set of trigonometric function basis. You can set this option to `manual` to set the initialization from a OpenVDB file.
 * `-sym`: symmetry requirement on the structure, only `reflect3`, `reflect6` and `rotate3` are supported. Default is `reflect6`.
 * `-vol`: volume ratio for material usage ranging from $(0,1)$, default is `0.3`
-* `-E`: Young's  modulus of base material. Default is `1e6`
+* `-E`: Young's  modulus of base material. Default is `1e1` (Recommanded, inappropriate value will cause numerical problem due to poor representation range of Fp16. You can rescale the elastic matrix latter).
 * `-mu`: Poisson's ratio of base material. Default is `0.3`
 * `-prefix`: output path suffixed with `/` 
 * `-in`: variable input determined by other options, e.g., a OpenVDB file path when the argument of `-init` is `manual`.
@@ -47,7 +47,7 @@ make -j4
 optimizing the bulk modulus :
 
 ```shell
-./homo3d -reso 128 -obj bulk -init randc -sym reflect6 -vol 0.3 -E 1e6 -mu 0.3
+./homo3d -reso 128 -obj bulk -init randc -sym reflect6 -vol 0.3 -mu 0.3
 ```
 
 After the optimization finished, the optimized density field is stored in `<prefix>/rho` in OpenVDB format.
