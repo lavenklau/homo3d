@@ -55,7 +55,7 @@ void homo::Homogenization::build(cfg::HomoConfig homconfig)
 
 	grid->test();
 
-	initTemplateMatrix(1, getMem());
+	initTemplateMatrix(1, getMem(), config.youngsModulu, config.poissonRatio);
 
 	uploadTemplaceMatrix(getTemplateMatrixFp64().data(), power_penal);
 
