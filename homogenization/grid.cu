@@ -533,7 +533,7 @@ __global__ void gs_relaxation_otf_kernel(
 
 		// if dirichlet boundary;
 		//if (DIRICHLET_STRENGTH >= 0) {
-			//if (vflag.is_dirichlet_boundary()) { u[0] = u[1] = u[2] = 0; }
+			if (vflag.is_dirichlet_boundary()) { u[0] = u[1] = u[2] = 0; }
 		//}
 		// update
 		gU[0][vid] = u[0];
@@ -1161,7 +1161,7 @@ __global__ void prolongate_correction_kernel_1(
 		}
 
 		if (isRoot && vflag.is_dirichlet_boundary()) {
-			//u[0] = u[1] = u[2] = 0;
+			u[0] = u[1] = u[2] = 0;
 		}
 		gU[0][tid] += u[0];
 		gU[1][tid] += u[1];
@@ -1405,7 +1405,7 @@ __global__ void update_residual_otf_kernel_1(
 			gF[1][vid] - KeU[1],
 			gF[2][vid] - KeU[2] };
 
-		//if (vflag.is_dirichlet_boundary()) { r[0] = r[1] = r[2] = 0; }
+		if (vflag.is_dirichlet_boundary()) { r[0] = r[1] = r[2] = 0; }
 
 		//if (debug) {
 		//	printf("sumKu = (%.4e, %.4e, %.4e)\n", KeU[0], KeU[1], KeU[2]);
