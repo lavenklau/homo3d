@@ -4346,4 +4346,62 @@ float homo::Grid::sumDensity(void)
 	return rhoSum;
 }
 
+template<typename T,int N>
+__global__ void checkPeriodVertex_kernel(int nv, devArray_t<T *, N> v, VertexFlags *vflags)
+{
+	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+	if (tid >= nv) return;
+	auto vflag = vflags[tid];
+	if(!vflag.is_min_boundary() || vflag.is_period_padding()) return;
+	GridVertexIndex indexer(gGridCellReso[0], gGridCellReso[1], gGridCellReso[2]);
+	int color = vflag.get_gscolor();
+	indexer.locate(tid, color, gGsVertexEnd);
+	auto pos = indexer.getPos();
+	pos.x -= 1; pos.y -= 1; pos.z -= 1;
+	// Note : we only check one period vertex, actually there are more.
+	if (pos.x == 0)
+		pos.x = gGridCellReso[0];
+	if (pos.y == 0)
+		pos.y = gGridCellReso[1];
+	if (pos.z == 0)
+		pos.z = gGridCellReso[2];
+	int p[3] = {pos.x, pos.y, pos.z};
+	int maxid = lexi2gs(p, gGsVertexReso, gGsVertexEnd);
+	bool is_same = true;
+	for (int i = 0; i < N; i++) {
+		if (v[i][tid] != v[i][maxid]) {
+			is_same = false;
+			break;
+		}
+	}
+	if (!is_same)
+	{
+		// printf("[%04d, %04d, %04d] vmin = (%6.4e, %6.4e, %6.4e) vmax = (%6.4e, %6.4e, %6.4e)\n",
+		// 	   p[0], p[1], p[2], v[0][tid], v[1][tid], v[2][tid],
+		// 	   v[0][maxid], v[1][maxid], v[2][maxid]);
+		printf("[%04d, %04d, %04d] = (vid = %d, maxid = %d)\n", p[0], p[1], p[2], int(tid), maxid);
+	}
+}
 
+template <typename T, int N>
+void checkPeriodVertex_imp(int nv, VertexFlags *vertflag, T *v[N]) {
+	size_t grid_size, block_size;
+	make_kernel_param(&grid_size, &block_size, nv, 256);
+	devArray_t<T *, N> varr(v);
+	checkPeriodVertex_kernel<<<grid_size, block_size>>>(nv, varr, vertflag);
+	cudaDeviceSynchronize();
+	cuda_error_check;
+}
+
+void homo::Grid::checkPeriodVertex(VT *v[3]) {
+	checkPeriodVertex_imp<VT, 3>(n_gsvertices(), vertflag, v);
+}
+
+void homo::Grid::checkPeriodStencil() {
+	if (is_root) { return; };
+	for (int i = 0; i < 27; i++) {
+		printf("checking period stencil %d ...\n", i);
+		glm::hmat3 *st[1] = {stencil_g[i]};
+		checkPeriodVertex_imp<glm::hmat3, 1>(n_gsvertices(), vertflag, st);
+	}
+}

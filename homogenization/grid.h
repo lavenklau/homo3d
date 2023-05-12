@@ -320,6 +320,10 @@ struct Grid {
 
 	void sensitivity(int i, int j, float* sens);
 
+	void checkPeriodVertex(VT* v[3]);
+
+	void checkPeriodStencil();
+
 	std::vector<VertexFlags> getVertexflags(void);
 
 	std::vector<CellFlags> getCellflags(void);
