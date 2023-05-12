@@ -295,7 +295,7 @@ double** Grid::getDisplacement(void)
 
 double Grid::relative_residual(void)
 {
-	return v3_norm(r_g) / (v3_norm(f_g) + 1e-30);
+	return v3_norm(r_g, true) / (v3_norm(f_g, true) + 1e-30);
 }
 
 double homo::Grid::residual(void)
