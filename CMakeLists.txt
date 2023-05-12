@@ -102,6 +102,7 @@ file(GLOB cppfiles
 # file(GLOB cppfiles *.cpp)
 add_executable(homo3d ${cppfiles})
 target_include_directories(homo3d PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+set_target_properties(homo3d PROPERTIES CUDA_ARCHITECTURES "61;75;86")
 target_link_libraries(homo3d PRIVATE cubin)
 target_link_libraries(homo3d PRIVATE OpenVDB::openvdb)
 target_link_libraries(homo3d PRIVATE -lHalf)
