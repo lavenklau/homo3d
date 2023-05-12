@@ -400,14 +400,14 @@ __global__ void gs_relaxation_otf_kernel(
 	}
 	
 	double KeU[3] = { 0. };
-	float Ks[3][3] = { 0.f };
+	double Ks[3][3] = { 0.f };
 
 	//fiction |= vflag.is_max_boundary();
 
 	if (!fiction && !vflag.is_period_padding()) {
 		int elementId = indexer.neighElement(warpId, gsCellEnd, gsCellReso).getId();
 		int vselfrow = (7 - warpId) * 3;
-		float rho_penal = 0;
+		double rho_penal = 0;
 		CellFlags eflag;
 		float penal = exp_penal[0];
 		if (elementId != -1) {
@@ -464,7 +464,7 @@ __global__ void gs_relaxation_otf_kernel(
 
 			for (int k3row = 0; k3row < 3; k3row++) {
 				for (int k3col = 0; k3col < 3; k3col++) {
-					Ks[k3row][k3col] += float(KE[vselfrow + k3row][vselfrow + k3col]) * rho_penal;
+					Ks[k3row][k3col] += KE[vselfrow + k3row][vselfrow + k3col] * rho_penal;
 				}
 			}
 
