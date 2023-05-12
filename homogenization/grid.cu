@@ -343,14 +343,14 @@ __global__ void gs_relaxation_otf_kernel(
 //#endif
 
 	__shared__ double sumKeU[3][4][32];
-	__shared__ float sumKs[9][4][32];
+	__shared__ double sumKs[9][4][32];
 
 	//__shared__ double* U[3];
 
 	//__shared__ int NeNv[8][8];
 
 	initSharedMem(&sumKeU[0][0][0], sizeof(sumKeU) / sizeof(double));
-	initSharedMem(&sumKs[0][0][0], sizeof(sumKs) / sizeof(float));
+	initSharedMem(&sumKs[0][0][0], sizeof(sumKs) / sizeof(double));
 
 	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
 
