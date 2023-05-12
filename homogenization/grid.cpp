@@ -1277,6 +1277,13 @@ void homo::Grid::restrict_stencil_arround_dirichelt_boundary(void) {
 			}
 		}
 
+		// clamp for fp16 number
+		for (int k = 0; k < 3; k++) {
+			if (abs(st[13][k][k]) < 1e-4) {
+				st[13][k][k] = 1e-4;
+			}
+		}
+
 		int vi_pos_period[3] = {
 			(vi % 3 -1 + cellReso[0]) % cellReso[0],
 			(vi / 3 % 3 -1 + cellReso[1]) % cellReso[1],
