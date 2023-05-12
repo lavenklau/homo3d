@@ -15,6 +15,7 @@
 #include "gmem/DeviceBuffer.h"
 #include <Eigen/Sparse>
 #include <Eigen/IterativeLinearSolvers>
+#include <glm/glm.hpp>
 
 namespace homo {
 
@@ -128,6 +129,8 @@ struct Grid {
 	float* rho_g;
 	VertexFlags* vertflag;
 	CellFlags* cellflag;
+
+	float exp_penal = 1;
 
 	float diag_strength = 0;
 
@@ -307,6 +310,10 @@ struct Grid {
 	std::vector<CellFlags> getCellflags(void);
 
 	void setMacroStrainDisplacement(int i, float* u[3]);
+
+	int elexid2gsid(int lexid);
+	void restrict_stencil_arround_dirichelt_boundary(void);
+
 
 	void v3_reset(float* v[3], int len = -1);
 	void v3_const(float* v[3], const float v_const[3]);
