@@ -1293,14 +1293,24 @@ void homo::Grid::restrict_stencil_arround_dirichelt_boundary(void) {
 			(vi / 3 % 3 -1 + cellReso[1]) % cellReso[1],
 			(vi / 9 - 1 + cellReso[2]) % cellReso[2]};
 
-		int vi_period_id = vlexid2gsid(
-			vi_pos_period[0] +
-				vi_pos_period[1] * (cellReso[0] + 1) +
-				vi_pos_period[2] * (cellReso[0] + 1) * (cellReso[1] + 1),
-			true);
-		for (int i = 0; i < 27; i++) {
-			auto sten = DevicePtr(stencil_g[i]);
-			sten[vi_period_id] = st[i];
+		int vop[3] ;
+		for (int px = 0; px < 1 + (vi_pos_period[0] == 0); px++) {
+			vop[0] = px ? cellReso[0] : vi_pos_period[0];
+			for (int py = 0; py < 1 + (vi_pos_period[1] == 0); py++) {
+				vop[1] =py ? cellReso[1] : vi_pos_period[1];
+				for (int pz = 0; pz < 1 + (vi_pos_period[2] == 0); pz++) {
+					vop[2] = pz ? cellReso[2] : vi_pos_period[2];
+					int vi_period_id = vlexid2gsid(
+						vop[0] +
+							vop[1] * (cellReso[0] + 1) +
+							vop[2] * (cellReso[0] + 1) * (cellReso[1] + 1),
+						true);
+					for (int i = 0; i < 27; i++) {
+						auto sten = DevicePtr(stencil_g[i]);
+						sten[vi_period_id] = st[i];
+					}
+				}
+			}
 		}
 	}
 }
