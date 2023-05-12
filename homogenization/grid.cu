@@ -443,7 +443,7 @@ __global__ void gs_relaxation_otf_kernel(
 					if (!nvflag.is_fiction()) {
 						double u[3] = { gU[0][vneighId], gU[1][vneighId], gU[2][vneighId] };
 						if (nvflag.is_dirichlet_boundary()) {
-							u[0] = u[1] = u[2] = 0;
+							//u[0] = u[1] = u[2] = 0;
 						}
 #if 0
 						for (int k3row = 0; k3row < 3; k3row++) {
@@ -649,10 +649,10 @@ __global__ void gs_relaxation_kernel(
 			Au[i] = sumAu[i][warpId][laneId] + sumAu[i][warpId + 1][laneId];
 		}
 
-		if (vflag.is_dirichlet_boundary()) {
-			gU[0][vid] = 0; gU[1][vid] = 0; gU[2][vid] = 0;
-			return;
-		}
+		//if (vflag.is_dirichlet_boundary()) {
+		//	gU[0][vid] = 0; gU[1][vid] = 0; gU[2][vid] = 0;
+		//	return;
+		//}
 
 		if (!vflag.is_period_padding()) {
 			double u[3] = { gU[0][vid], gU[1][vid], gU[2][vid] };
@@ -972,7 +972,7 @@ __global__ void restrict_residual_kernel_1(
 			}
 		}
 
-		if (vflag.is_dirichlet_boundary()) r[0] = r[1] = r[2] = 0;
+		//if (vflag.is_dirichlet_boundary()) r[0] = r[1] = r[2] = 0;
 		for (int i = 0; i < 3; i++) {
 			gF[i][tid] = r[i];
 		}
@@ -1340,7 +1340,7 @@ __global__ void update_residual_otf_kernel_1(
 				if (!nvflag.is_fiction()) {
 					double u[3] = { gU[0][vneighId],gU[1][vneighId],gU[2][vneighId] };
 					if (nvflag.is_dirichlet_boundary()) {
-						u[0] = u[1] = u[2] = 0;
+						//u[0] = u[1] = u[2] = 0;
 					}
 #if 0
 					for (int k3row = 0; k3row < 3; k3row++) {
@@ -1522,9 +1522,9 @@ __global__ void update_residual_kernel_1(
 		KeU[2] = sumKu[2][warpId][laneId] + sumKu[2][warpId + 1][laneId] + sumKu[2][4][laneId];
 
 		double r[3] = { gF[0][vid] - KeU[0],gF[1][vid] - KeU[1],gF[2][vid] - KeU[2] };
-		if (vflag.is_dirichlet_boundary()) {
-			r[0] = r[1] = r[2] = 0;
-		}
+		//if (vflag.is_dirichlet_boundary()) {
+		//	r[0] = r[1] = r[2] = 0;
+		//}
 
 		gR[0][vid] = r[0];
 		gR[1][vid] = r[1];
@@ -2688,7 +2688,7 @@ void homo::Grid::enforce_period_stencil(bool additive)
 		enforce_period_vertex(stencil_g[i], additive);
 	}
 	if (fine->is_root) {
-		restrict_stencil_arround_dirichelt_boundary();
+		 restrict_stencil_arround_dirichelt_boundary();
 	}
 	pad_vertex_data_imp<glm::mat3, 27>(stencil_g, cellReso, vertflag);
 #endif
@@ -3976,7 +3976,7 @@ __global__ void v3_stencilOnLeft_kernel(
 				if (!nvflag.is_fiction()) {
 					double u[3] = { v[0][vneighId],v[1][vneighId],v[2][vneighId] };
 					if (nvflag.is_dirichlet_boundary()) {
-						u[0] = u[1] = u[2] = 0;
+						//u[0] = u[1] = u[2] = 0;
 					}
 					for (int k3row = 0; k3row < 3; k3row++) {
 						for (int k3col = 0; k3col < 3; k3col++) {
@@ -4030,7 +4030,7 @@ __global__ void v3_stencilOnLeft_kernel(
 
 		double kv[3] = { KeU[0], KeU[1], KeU[2] };
 
-		if (vflag.is_dirichlet_boundary()) { kv[0] = kv[1] = kv[2] = 0; }
+		//if (vflag.is_dirichlet_boundary()) { kv[0] = kv[1] = kv[2] = 0; }
 
 		Kv[0][vid] = kv[0];
 		Kv[1][vid] = kv[1];
