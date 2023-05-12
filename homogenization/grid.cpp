@@ -1169,3 +1169,195 @@ void homo::Grid::translateForce(int type_, double* v[3]) {
 	v3_removeT(v, t_f);
 }
 
+template<typename T>
+struct DeviceDataProxy {
+	T* pdata;
+	template<typename Q>
+	operator Q(){
+		T data;
+		cudaMemcpy(&data, pdata, sizeof(T), cudaMemcpyDeviceToHost);
+		return Q(data);
+	}
+	DeviceDataProxy& operator=(const DeviceDataProxy<T>& q) {
+		cudaMemcpy(pdata, q.pdata, sizeof(T), cudaMemcpyDeviceToDevice);
+		return *this;
+	}
+	template<typename Q>
+	DeviceDataProxy& operator=(Q data) {
+		T tdata = data;
+		cudaMemcpy(pdata, &tdata, sizeof(T), cudaMemcpyHostToDevice);
+		return *this;
+	}
+	DeviceDataProxy(T *p) : pdata(p) {}
+};
+
+template<typename T>
+struct DevicePtr {
+	T* pdata;
+	DevicePtr(T *p) : pdata(p) {}
+	DeviceDataProxy<T> operator[](size_t ind) {
+		return DeviceDataProxy<T>(pdata + ind);
+	}
+	DeviceDataProxy<T> operator*() {
+		return DeviceDataProxy<T>(pdata);
+	}
+	DevicePtr operator+(size_t step) {
+		return DevicePtr<T>(pdata + step);
+	}
+	DevicePtr operator-(size_t step) {
+		return DevicePtr<T>(pdata - step);
+	}
+};
+
+int homo::Grid::elexid2gsid(int lexid) {
+	int pos[3];
+	int ereso[3];
+	for (int i = 0; i < 3; i++) ereso[i] = cellReso[i];
+	pos[0] = lexid % ereso[0] + 1;
+	pos[1] = lexid / ereso[0] % ereso[1] + 1;
+	pos[2] = lexid / (ereso[0] * ereso[1]) + 1;
+	int gspos[3] = { pos[0] / 2,pos[1] / 2,pos[2] / 2 };
+	int color = pos[0] % 2 + pos[1] % 2 * 2 + pos[2] % 2 * 4;
+	int setid = gspos[0] +
+		gspos[1] * gsCellReso[0][color] +
+		gspos[2] * gsCellReso[0][color] * gsCellReso[1][color];
+	int base = color == 0 ? 0 : gsCellSetEnd[color - 1];
+	int gsid = base + setid;
+	return gsid;
+}
+
+void homo::Grid::restrict_stencil_arround_dirichelt_boundary(void) {
+	if (!fine->is_root)
+		return;
+	auto KE = getTemplateMatrix();
+	auto rholist = DevicePtr(fine->rho_g);
+	auto finereso = fine->cellReso;
+	std::map<std::array<int, 3>, float> pos2rho;
+	for (int xc_off = -2 * upCoarse[0]; xc_off < 2 * upCoarse[0]; xc_off++) {
+		for (int yc_off = -2 * upCoarse[1]; yc_off < 2 * upCoarse[1]; yc_off++) {
+			for (int zc_off = -2 * upCoarse[2]; zc_off < 2 * upCoarse[2]; zc_off++) {
+				int epos[3] = {
+					(xc_off + finereso[0]) % finereso[0],
+					(yc_off + finereso[1]) % finereso[1],
+					(zc_off + finereso[2]) % finereso[2]
+				};
+				int eid = epos[0] + epos[1] * finereso[0] + epos[2] * finereso[0] * finereso[1];
+				int egsid = fine->elexid2gsid(eid);
+				float prho = powf(rholist[egsid], exp_penal);
+				pos2rho[{xc_off, yc_off, zc_off}] = prho;
+				// printf("e(%d, %d, %d) = %4.2e\n", xc_off, yc_off, zc_off, prho);
+			}
+		}
+	}
+
+	glm::mat<3, 3, double> ke[8][8];
+	for (int ri = 0; ri < 8; ri++) {
+		for (int ci = 0; ci < 8; ci++) {
+			for (int r = 0; r < 3; r++) {
+				for (int c = 0; c < 3; c++) {
+					ke[ri][ci][c][r] = KE(ri * 3 + r, ci * 3 + c);
+				}
+			}
+		}
+	}
+
+	double pr = (upCoarse[0] * upCoarse[1] * upCoarse[2]);
+	for (int vi = 0; vi < 27; vi++)
+	{
+		Eigen::Vector3i vi_pos = {
+			(vi % 3 - 1) * upCoarse[0],
+			(vi / 3 % 3 - 1) * upCoarse[1],
+			(vi / 9 - 1) * upCoarse[2]};
+		glm::dmat3 st[27] = {};
+		for (int k = 0; k < 27; k++)
+			st[k] = glm::dmat3(0.);
+		for (int vj = 0; vj < 27; vj++)
+		{
+			Eigen::Vector3i vj_pos_off_vi = {
+				(vj % 3 - 1) * upCoarse[0],
+				(vj / 3 % 3 - 1) * upCoarse[1],
+				(vj / 9 - 1) * upCoarse[2]};
+			Eigen::Vector3i vj_pos = vi_pos + vj_pos_off_vi;
+			for (int e_off_vj_x = -upCoarse[0]; e_off_vj_x < upCoarse[0]; e_off_vj_x++)
+			{
+				for (int e_off_vj_y = -upCoarse[1]; e_off_vj_y < upCoarse[1]; e_off_vj_y++)
+				{
+					for (int e_off_vj_z = -upCoarse[2]; e_off_vj_z < upCoarse[2]; e_off_vj_z++)
+					{
+						Eigen::Vector3i epos = vj_pos + Eigen::Vector3i(e_off_vj_x, e_off_vj_y, e_off_vj_z);
+						Eigen::Vector3i e_off_vi = epos - vi_pos;
+						if (e_off_vi[0] >= upCoarse[0] || e_off_vi[0] < -upCoarse[0] ||
+							e_off_vi[1] >= upCoarse[1] || e_off_vi[1] < -upCoarse[1] ||
+							e_off_vi[2] >= upCoarse[2] || e_off_vi[2] < -upCoarse[2])
+						{
+							continue;
+						}
+						double prho = pos2rho[{epos[0], epos[1], epos[2]}];
+						for (int e_vi = 0; e_vi < 8; e_vi++)
+						{
+							Eigen::Vector3i e_vi_pos = epos + Eigen::Vector3i(e_vi % 2, e_vi / 2 % 2, e_vi / 4);
+							Eigen::Vector3i e_vi_off = e_vi_pos - vi_pos;
+							// ToDo : this causes errors if resolution is too small
+							bool e_vi_d = e_vi_pos[0] == 0 && e_vi_pos[1] == 0 && e_vi_pos[2] == 0;
+							if (abs(e_vi_off[0]) >= upCoarse[0] ||
+								abs(e_vi_off[1]) >= upCoarse[1] ||
+								abs(e_vi_off[2]) >= upCoarse[2])
+								continue;
+							double wi =
+								(upCoarse[0] - abs(e_vi_off[0])) *
+								(upCoarse[1] - abs(e_vi_off[1])) *
+								(upCoarse[2] - abs(e_vi_off[2])) / pr;
+							for (int e_vj = 0; e_vj < 8; e_vj++)
+							{
+								Eigen::Vector3i e_vj_pos = epos + Eigen::Vector3i(e_vj % 2, e_vj / 2 % 2, e_vj / 4);
+								Eigen::Vector3i e_vj_off = e_vj_pos - vj_pos;
+								bool e_vj_d = e_vj_pos[0] == 0 && e_vj_pos[1] == 0 && e_vj_pos[2] == 0;
+								if (abs(e_vj_off[0]) >= upCoarse[0] ||
+									abs(e_vj_off[1]) >= upCoarse[1] ||
+									abs(e_vj_off[2]) >= upCoarse[2])
+									continue;
+								double wj =
+									(upCoarse[0] - abs(e_vj_off[0])) *
+									(upCoarse[1] - abs(e_vj_off[1])) *
+									(upCoarse[2] - abs(e_vj_off[2])) / pr;
+								if (e_vi_d || e_vj_d)
+								{
+									if (e_vi == e_vj)
+										st[vj] += wi * wj * glm::dmat3(1.);
+								}
+								else{
+									st[vj] += wi * wj * ke[e_vi][e_vj] * prho;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		int vi_pos_period[3] = {
+			(vi % 3 -1 + cellReso[0]) % cellReso[0],
+			(vi / 3 % 3 -1 + cellReso[1]) % cellReso[1],
+			(vi / 9 - 1 + cellReso[2]) % cellReso[2]};
+
+		int vop[3] ;
+		for (int px = 0; px < 1 + (vi_pos_period[0] == 0); px++) {
+			vop[0] = px ? cellReso[0] : vi_pos_period[0];
+			for (int py = 0; py < 1 + (vi_pos_period[1] == 0); py++) {
+				vop[1] =py ? cellReso[1] : vi_pos_period[1];
+				for (int pz = 0; pz < 1 + (vi_pos_period[2] == 0); pz++) {
+					vop[2] = pz ? cellReso[2] : vi_pos_period[2];
+					int vi_period_id = vlexid2gsid(
+						vop[0] +
+							vop[1] * (cellReso[0] + 1) +
+							vop[2] * (cellReso[0] + 1) * (cellReso[1] + 1),
+						true);
+					for (int i = 0; i < 27; i++) {
+						auto sten = DevicePtr(stencil_g[i]);
+						sten[vi_period_id] = st[i];
+					}
+				}
+			}
+		}
+	}
+}

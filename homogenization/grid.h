@@ -130,6 +130,8 @@ struct Grid {
 	VertexFlags* vertflag;
 	CellFlags* cellflag;
 
+	float exp_penal = 1;
+
 	float diag_strength = 0;
 
 	int gsVertexReso[3][8];
@@ -310,6 +312,9 @@ struct Grid {
 	std::vector<CellFlags> getCellflags(void);
 
 	void setMacroStrainDisplacement(int i, double* u[3]);
+
+	int elexid2gsid(int lexid);
+	void restrict_stencil_arround_dirichelt_boundary(void);
 
 	void v3_reset(double* v[3], int len = -1);
 	void v3_const(double* v[3], const double v_const[3]);
