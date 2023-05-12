@@ -2663,6 +2663,9 @@ void homo::Grid::lexiStencil2gsorder(void)
 //	}
 //}
 
+template <typename T, int N>
+void pad_vertex_data_imp(T **v, std::array<int, 3> cellReso, VertexFlags* vertflag);
+
 void homo::Grid::enforce_period_stencil(bool additive)
 {
 	useGrid_g();
