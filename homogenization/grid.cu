@@ -3100,6 +3100,204 @@ __global__ void enforce_period_boundary_vertex_kernel(int siz, devArray_t<T*, 3>
 	if (additive) { for (int j = 0; j < 3; j++) v[j][gsid] = val[j]; }
 
 }
+template<typename T, int N>
+__global__ void pad_vertex_data_kernel(int nvfacepad, int nvedgepadd, devArray_t<T*, N> v, VertexFlags* vflags) {
+	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+	if (tid >= nvfacepad + nvedgepadd) return;
+	int ereso[3] = { gGridCellReso[0],gGridCellReso[1],gGridCellReso[2] };
+
+	//bool debug = false;
+
+	int boundaryType = -1;
+
+	if (tid < nvfacepad) {
+		int pos[3] = { -2,-2,-2 };
+		// padd face
+		do {
+			if (tid < (ereso[0] + 1) * (ereso[1] + 1)) {
+				pos[0] = tid % (ereso[0] + 1);
+				pos[1] = tid / (ereso[0] + 1);
+				pos[2] = 0;
+				boundaryType = 0;
+				break;
+			}
+			tid -= (ereso[0] + 1) * (ereso[1] + 1);
+			if (tid < (ereso[1] + 1) * (ereso[2] + 1)) {
+				pos[0] = 0;
+				pos[1] = tid % (ereso[1] + 1);
+				pos[2] = tid / (ereso[1] + 1);
+				boundaryType = 1;
+				break;
+			}
+			tid -= (ereso[1] + 1) * (ereso[2] + 1);
+			if (tid < (ereso[0] + 1) * (ereso[2] + 1)) {
+				pos[0] = tid % (ereso[0] + 1);
+				pos[1] = 0;
+				pos[2] = tid / (ereso[0] + 1);
+				boundaryType = 2;
+				break;
+			}
+		} while (0);
+		if (pos[0] <= -2 || pos[1] <= -2 || pos[2] <= -2) return;
+
+		int gsid = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
+		VertexFlags vflag = vflags[gsid];	// padding 
+		if (boundaryType == 1) {
+			for (int i : {-1, 1}) {
+				int p[3] = { pos[0] + i, pos[1], pos[2] };
+				int q[3] = { pos[0] + ereso[0] + i, pos[1], pos[2] };
+				int pid = lexi2gs(p, gGsVertexReso, gGsVertexEnd);
+				int qid = lexi2gs(q, gGsVertexReso, gGsVertexEnd);
+				if (i == -1) for (int j = 0; j < N; j++) v[j][pid] = v[j][qid];
+				if (i == 1) for (int j = 0; j < N; j++) v[j][qid] = v[j][pid];
+			}
+		}
+		if (boundaryType == 2) {
+			for (int i : {-1, 1}) {
+				int p[3] = { pos[0] , pos[1] + i, pos[2] };
+				int q[3] = { pos[0] , pos[1] + ereso[1] + i, pos[2] };
+				int pid = lexi2gs(p, gGsVertexReso, gGsVertexEnd);
+				int qid = lexi2gs(q, gGsVertexReso, gGsVertexEnd);
+				if (i == -1) for (int j = 0; j < N; j++) v[j][pid] = v[j][qid];
+				if (i == 1) for (int j = 0; j < N; j++) v[j][qid] = v[j][pid];
+			}
+		}
+		if (boundaryType == 0) {
+			for (int i : {-1, 1}) {
+				int p[3] = { pos[0] , pos[1] , pos[2] + i };
+				int q[3] = { pos[0] , pos[1] , pos[2] + ereso[2] + i };
+				int pid = lexi2gs(p, gGsVertexReso, gGsVertexEnd);
+				int qid = lexi2gs(q, gGsVertexReso, gGsVertexEnd);
+				if (i == -1) for (int j = 0; j < N; j++) v[j][pid] = v[j][qid];
+				if (i == 1) for (int j = 0; j < N; j++) v[j][qid] = v[j][pid];
+			}
+		}
+	}
+	else if (tid - nvfacepad < nvedgepadd) {
+		bool debug = false;
+		// padd edge
+		int id = tid - nvfacepad;
+		int nv_bot = (ereso[0] + 3) * (ereso[1] + 3) - (ereso[0] + 1) * (ereso[1] + 1);
+		int po[3] = { 0,0,0 };
+		if (id < 2 * nv_bot) {
+			po[2] = id / nv_bot * (ereso[2] + 2);
+			id = id % nv_bot;
+			if (id < 2 * (ereso[0] + 3)) {
+				po[0] = id % (ereso[0] + 3);
+				po[1] = id / (ereso[0] + 3) * (ereso[1] + 2);
+			} else {
+				id -= 2 * (ereso[0] + 3);
+				po[0] = id / (ereso[1] + 1) * (ereso[0] + 2);
+				po[1] = id % (ereso[1] + 1) + 1;
+			}
+		}
+		else {
+			id -= 2 * nv_bot;
+			int hid = id / (ereso[2] + 1);
+			int vid = id % (ereso[2] + 1);
+			po[0] = hid % 2 * (ereso[0] + 2);
+			po[1] = hid / 2 * (ereso[1] + 2);
+			po[2] = vid + 1;
+		}
+		po[0] -= 1; po[1] -= 1; po[2] -= 1;
+		int op_pos[3];
+		for (int i = 0; i < 3; i++) {
+			op_pos[i] = (po[i] + ereso[i]) % ereso[i];
+		}
+		int myid = lexi2gs(po, gGsVertexReso, gGsVertexEnd);
+		int opid = lexi2gs(op_pos, gGsVertexReso, gGsVertexEnd);
+		for (int i = 0; i < N; i++) v[i][myid] = v[i][opid];
+	}
+	
+}
+
+template <typename T, int N>
+void pad_vertex_data_imp(T **v, std::array<int, 3> cellReso, VertexFlags* vertflag) {
+	int nvpadface = (cellReso[0] + 1) * (cellReso[1] + 1) +
+		(cellReso[1] + 1) * (cellReso[2] + 1) +
+		(cellReso[0] + 1) * (cellReso[2] + 1);
+	int nvpadedge = 2 * (
+		(cellReso[0] + 3) * (cellReso[1] + 3) - (cellReso[0] + 1) * (cellReso[1] + 1)) +
+		4 * (cellReso[2] + 1);
+	devArray_t<T*, N> arr(v);
+	size_t grid_size, block_size;
+	make_kernel_param(&grid_size, &block_size, nvpadface + nvpadedge, 256);
+	pad_vertex_data_kernel << <grid_size, block_size >> > (nvpadface, nvpadedge, arr, vertflag);
+	cudaDeviceSynchronize();
+	cuda_error_check;
+}
+
+
+template<typename VecIter>
+__global__ void enforce_period_boundary_vertex_aos_kernel(int siz, VecIter v, VertexFlags* vflags, bool additive = false) {
+	using Vec = std::remove_reference_t<decltype(*v)>;
+	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+	if (tid >= siz) return;
+	int pos[3] = { -2,-2,-2 };
+	int ereso[3] = { gGridCellReso[0],gGridCellReso[1],gGridCellReso[2] };
+
+	//bool debug = false;
+
+	do {
+		if (tid < ereso[0] * ereso[1]) {
+			pos[0] = tid % ereso[0];
+			pos[1] = tid / ereso[0];
+			pos[2] = 0;
+			break;
+		}
+		tid -= ereso[0] * ereso[1];
+		if (tid < ereso[1] *(ereso[2]-1)) {
+			pos[0] = 0;
+			pos[1] = tid % ereso[1];
+			pos[2] = tid / ereso[1] + 1;
+			break;
+		}
+		tid -= ereso[1] * (ereso[2] - 1);
+		if (tid < (ereso[0] - 1) * (ereso[2] - 1)) {
+			pos[0] = tid % (ereso[0] - 1) + 1;
+			pos[1] = 0;
+			pos[2] = tid / (ereso[0] - 1) + 1;
+			break;
+		}
+	} while (0);
+	if (pos[0] <= -2 || pos[1] <= -2 || pos[2] <= -2) return;
+
+	//if (pos[0] == 0 && pos[1] == 7 && pos[2] == 0) debug = true;
+
+	int gsid = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
+	VertexFlags vflag = vflags[gsid];
+	//T val[3] = { /*v[0][gsid],v[1][gsid],v[2][gsid]*/ };
+	Vec val(0.);
+	int op_ids[8] = { -1 ,-1,-1,-1, -1 ,-1,-1,-1 };
+	{
+		int op_pos[3];
+		for (int i = 0; i < vflag.is_set(LEFT_BOUNDARY) + 1; i++) {
+			op_pos[0] = pos[0];
+			if (i) op_pos[0] += ereso[0];
+			for (int j = 0; j < vflag.is_set(NEAR_BOUNDARY) + 1; j++) {
+				op_pos[1] = pos[1];
+				if (j) op_pos[1] += ereso[1];
+				for (int k = 0; k < vflag.is_set(DOWN_BOUNDARY) + 1; k++) {
+					op_pos[2] = pos[2];
+					if (k) op_pos[2] += ereso[2];
+					int op_id = lexi2gs(op_pos, gGsVertexReso, gGsVertexEnd);
+					op_ids[i * 4 + j * 2 + k] = op_id;
+					if (additive) val += v[op_id];
+				}
+			}
+		}
+	}
+
+	// enforce period boundary
+	for (int i = 0; i < 8; i++) {
+		if (op_ids[i] != -1) {
+			if (additive) v[op_ids[i]] = val;
+			else v[op_ids[i]] = v[gsid];
+		}
+	}
+	if (additive) { v[gsid] = val; }
+
+}
 
 void homo::Grid::enforce_period_vertex(double* v[3], bool additive /*= false*/)
 {
@@ -3254,20 +3452,13 @@ __global__ void pad_vertex_data_kernel(int nvfacepad, int nvedgepadd, devArray_t
 
 void homo::Grid::pad_vertex_data(double* v[3])
 {
-	int nvpadface = (cellReso[0] + 1) * (cellReso[1] + 1) +
-		(cellReso[1] + 1) * (cellReso[2] + 1) +
-		(cellReso[0] + 1) * (cellReso[2] + 1);
-	int nvpadedge = 2 * (
-		(cellReso[0] + 3) * (cellReso[1] + 3) - (cellReso[0] + 1) * (cellReso[1] + 1)) +
-		4 * (cellReso[2] + 1);
-	devArray_t<double*, 3> arr{ v[0],v[1],v[2] };
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, nvpadface + nvpadedge, 256);
-	pad_vertex_data_kernel << <grid_size, block_size >> > (nvpadface, nvpadedge, arr, vertflag);
-	cudaDeviceSynchronize();
-	cuda_error_check;
+	pad_vertex_data_imp<double, 3>(v, cellReso, vertflag);
 }
 
+void homo::Grid::pad_vertex_data(glm::mat3* v) {
+	glm::mat3* varr[1];
+	pad_vertex_data_imp<glm::mat3, 1>(varr, cellReso, vertflag);
+}
 
 template<typename T>
 __global__ void enforce_period_element_kernel(int siz, T* celldata, CellFlags* eflags) {
@@ -3582,19 +3773,7 @@ double homo::Grid::v3_dot(double* v[3], double* u[3], bool removePeriodDof /*= f
 
 void homo::Grid::pad_vertex_data(float* v[3])
 {
-	int nvpadface = (cellReso[0] + 1) * (cellReso[1] + 1) +
-		(cellReso[1] + 1) * (cellReso[2] + 1) +
-		(cellReso[0] + 1) * (cellReso[2] + 1);
-	int nvpadedge = 2 * (
-		(cellReso[0] + 3) * (cellReso[1] + 3) - (cellReso[0] + 1) * (cellReso[1] + 1)) +
-		4 * (cellReso[2] + 1);
-	devArray_t<float*, 3> arr{ v[0],v[1],v[2] };
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, nvpadface + nvpadedge, 256);
-	pad_vertex_data_kernel << <grid_size, block_size >> > (nvpadface, nvpadedge, arr, vertflag);
-	cudaDeviceSynchronize();
-	cuda_error_check;
-
+	pad_vertex_data_imp<float, 3>(v, cellReso, vertflag);
 }
 
 __global__ void v3_stencilOnLeft_kernel(
