@@ -310,8 +310,8 @@ void Grid::useFchar(int k)
 	useGrid_g();
 	enforce_unit_macro_strain(k);
 	//setForce(fchar_g[k]);
-	enforce_dirichlet_boundary(f_g);
-	enforce_period_vertex(f_g, true);
+	// enforce_dirichlet_boundary(f_g);
+	// enforce_period_vertex(f_g, true);
 	pad_vertex_data(f_g);
 	// DEBUG
 	if (0) {

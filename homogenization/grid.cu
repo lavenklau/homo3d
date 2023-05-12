@@ -1867,7 +1867,7 @@ __global__ void enforce_unit_macro_strain_kernel(
 			int neighEid = indexer.neighElement(ei, gGsCellEnd, gGsCellReso).getId();
 			if (neighEid == -1) continue;
 			CellFlags eflag = eflags[neighEid];
-			if (eflag.is_fiction() || eflag.is_period_padding()) continue;
+			// if (eflag.is_fiction() || eflag.is_period_padding()) continue;
 			float rho_penal = powf(rholist[neighEid], exp_penal[0]);
 			int kirow = (7 - ei) * 3;
 #if USE_LAME_MATRIX
