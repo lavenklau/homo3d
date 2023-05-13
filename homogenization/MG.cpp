@@ -150,7 +150,7 @@ double homo::MG::solveEquation(double tol /*= 1e-2*/, bool with_guess /*= true*/
 	int overflow_counter = 2;
 	std::vector<double> errlist;
 	double uch = 1e-7;
-	while ((rel_res > tol || uch > 1e-6) && iter++ < 200) {
+	while ((rel_res > tol || uch > 1e-6) && iter++ < 500) {
 #if 1
 		v_cycle(1);
 		//v_cycle_verbose(1);
@@ -159,8 +159,8 @@ double homo::MG::solveEquation(double tol /*= 1e-2*/, bool with_guess /*= true*/
 		grids[0]->update_residual();
 		rel_res = grids[0]->relative_residual();
 #endif
-		rel_res = grids[0]->residual() / (fnorm + 1e-10);
-		if (rel_res > 1e4) {
+		rel_res = grids[0]->residual() / (fnorm + 1e-30);
+		if (rel_res > 1e2 || iter >= 500 || std::isnan(rel_res)) {
 			//throw std::runtime_error("numerical failure");
 			printf("\033[31m\nnumerical explode, resetting initial guess...\033[0m\n");
 			grids[0]->v3_toMatlab("ferr", grids[0]->getForce());
@@ -191,6 +191,7 @@ double homo::MG::solveEquation(double tol /*= 1e-2*/, bool with_guess /*= true*/
 			grids[0]->reset_displacement();
 			overflow_counter--;
 			if (overflow_counter > 0) {
+				iter = 0;
 				continue;
 			} else {
 				printf("\033[31mFailed\033[0m\n");
@@ -206,7 +207,7 @@ double homo::MG::solveEquation(double tol /*= 1e-2*/, bool with_guess /*= true*/
 		//grids[0]->v3_copy(u0, grids[0]->u_g);
 		//grids[0]->v3_linear(1, ftmp, grids[0]->diag_strength, grids[0]->u_g, grids[0]->getForce());
 		errlist.emplace_back(rel_res);
-		printf("rel_res = %4.2lf%%    It.%d       \r", rel_res * 100, iter);
+		printf("rel_res = %4.2e    It.%d       \r", rel_res, iter);
 	}
 	printf("\n");
 	//grids[0]->v3_destroy(u0);
