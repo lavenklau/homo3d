@@ -15,6 +15,7 @@
 #include "gmem/DeviceBuffer.h"
 #include <Eigen/Sparse>
 #include <Eigen/IterativeLinearSolvers>
+#include "glm/glm.hpp"
 
 namespace homo {
 
