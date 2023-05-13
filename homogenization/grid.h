@@ -294,6 +294,8 @@ struct Grid {
 
 	void projectDensity(float beta = 20, float eta = 0.5, float a = 1.f, float b = 0.f);
 
+	double projectDensityToVolume(float vol, float beta = 20);
+
 	void interpDensityFrom(const std::string& fname, VoxelIOFormat frmat);
 
 	void interpDensityFromSDF(const std::string& fname, VoxelIOFormat frmat);
