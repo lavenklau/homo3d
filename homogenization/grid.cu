@@ -1796,13 +1796,13 @@ __global__ void enforce_unit_macro_strain_kernel(
 #if USE_LAME_MATRIX
 	__shared__ Lame KLAME[24][24];
 #else
-	__shared__ float KE[24][24];
+	__shared__ double KE[24][24];
 #endif
 
 #if USE_LAME_MATRIX
 	loadLameMatrix(KLAME);
-	float lam = LAM[0];
-	float mu = MU[0];
+	double lam = LAM[0];
+	double mu = MU[0];
 #else
 	loadTemplateMatrix(KE);
 #endif
@@ -1841,21 +1841,21 @@ __global__ void enforce_unit_macro_strain_kernel(
 			if (neighEid == -1) continue;
 			CellFlags eflag = eflags[neighEid];
 			if (eflag.is_fiction() || eflag.is_period_padding()) continue;
-			float rho_penal = powf(rholist[neighEid], exp_penal[0]);
+			double rho_penal = powf(rholist[neighEid], exp_penal[0]);
 			int kirow = (7 - ei) * 3;
 #if USE_LAME_MATRIX
 			//float flamchar[6][3] = { 0 };
 			//float fmuchar[6][3] = { 0 };
-			float flamchar[3] = { 0 };
-			float fmuchar[3] = { 0 };
+			double flamchar[3] = { 0 };
+			double fmuchar[3] = { 0 };
 #else
 			//float fechar[6][3] = { 0 };
-			float fechar[3] = { 0 };
+			double fechar[3] = { 0 };
 #endif
 			for (int kj = 0; kj < 8; kj++) {
 				int kjcol = kj * 3;
 				// e_xx
-				float uj[3] = {};
+				double uj[3] = {};
 				/*for (int istrain = 0; istrain < 6; istrain++)*/ {
 					elementMacroDisplacement(kj, istrain, uj);
 #if USE_LAME_MATRIX
