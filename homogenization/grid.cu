@@ -2691,6 +2691,9 @@ __global__ void enforce_period_stencil_subst_kernel(void) {
 template <typename T, int N>
 void pad_vertex_data_imp(T **v, std::array<int, 3> cellReso, VertexFlags* vertflag);
 
+template <typename T, int N>
+void enforce_period_vertex_imp(T **v, std::array<int, 3> cellReso, VertexFlags *vertflag, bool additive = false);
+
 void homo::Grid::enforce_period_stencil(bool additive)
 {
 	useGrid_g();
