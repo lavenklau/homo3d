@@ -379,6 +379,8 @@ struct Grid {
 	void enforce_period_vertex(float* v[3], bool additive = false);
 	void pad_vertex_data(double* v[3]);
 	void pad_vertex_data(float* v[3]);
+	void pad_vertex_data(glm::mat3 *v);
+	void pad_vertex_data(glm::dmat3 *v);
 	void pad_cell_data(float* e);
 	void enforce_period_element(float* data);
 

@@ -2680,6 +2680,9 @@ __global__ void enforce_period_stencil_subst_kernel(void) {
 	}
 }
 
+template <typename T, int N>
+void pad_vertex_data_imp(T **v, std::array<int, 3> cellReso, VertexFlags* vertflag);
+
 void homo::Grid::enforce_period_stencil(bool additive)
 {
 	useGrid_g();
@@ -3456,7 +3459,12 @@ void homo::Grid::pad_vertex_data(double* v[3])
 }
 
 void homo::Grid::pad_vertex_data(glm::mat3* v) {
-	glm::mat3* varr[1];
+	glm::mat3* varr[1] = {v};
+	pad_vertex_data_imp<glm::mat3, 1>(varr, cellReso, vertflag);
+}
+
+void homo::Grid::pad_vertex_data(glm::dmat3 *v) {
+	glm::mat3 *varr[1] = {v};
 	pad_vertex_data_imp<glm::mat3, 1>(varr, cellReso, vertflag);
 }
 
