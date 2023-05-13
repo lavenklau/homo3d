@@ -2708,7 +2708,7 @@ void homo::Grid::enforce_period_stencil(bool additive)
 		}
 		enforce_period_vertex_imp<double, 9>(st, cellReso, vertflag, additive);
 	}
-	if(is_root) {
+	if(fine->is_root) {
 		restrict_stencil_arround_dirichelt_boundary();
 	}
 	for (int i = 0; i < 27; i++) {
