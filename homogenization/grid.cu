@@ -574,7 +574,7 @@ __global__ void gs_relaxation_kernel(
 	if (vid >= gsVertexEnd[gs_set]) fiction = true;
 	VertexFlags vflag;
 	if (!fiction) vflag = vflags[vid];
-	fiction |= vflag.is_fiction();
+	fiction = fiction || vflag.is_fiction();
 
 	GridVertexIndex indexer(gGridCellReso[0], gGridCellReso[1], gGridCellReso[2]);
 
@@ -1283,11 +1283,11 @@ __global__ void update_residual_otf_kernel_1(
 
 	bool fiction = false;
 
-	fiction |= vid >= nv;
+	fiction = fiction || vid >= nv;
 	VertexFlags vflag;
 	if (!fiction) {
 		vflag = vflags[vid];
-		fiction |= vflag.is_fiction();
+		fiction = fiction || vflag.is_fiction();
 	}
 	int set_id = vflag.get_gscolor();
 
@@ -1468,7 +1468,7 @@ __global__ void update_residual_kernel_1(
 
 	VertexFlags vflag;
 	if (!fiction) vflag = vflags[vid];
-	fiction |= vflag.is_fiction();
+	fiction = fiction || vflag.is_fiction();
 	int color = vflag.get_gscolor();
 
 
@@ -3821,11 +3821,11 @@ __global__ void v3_stencilOnLeft_kernel(
 
 	bool fiction = false;
 
-	fiction |= vid >= nv;
+	fiction = fiction || vid >= nv;
 	VertexFlags vflag;
 	if (!fiction) {
 		vflag = vflags[vid];
-		fiction |= vflag.is_fiction();
+		fiction = fiction || vflag.is_fiction();
 	}
 	int set_id = vflag.get_gscolor();
 
