@@ -3029,8 +3029,8 @@ void homo::Grid::test(void)
 	//exit(0);
 }
 
-template<typename T>
-__global__ void enforce_period_boundary_vertex_kernel(int siz, devArray_t<T*, 3> v, VertexFlags* vflags, bool additive = false) {
+template<typename T, int N>
+__global__ void enforce_period_boundary_vertex_kernel(int siz, devArray_t<T*, N> v, VertexFlags* vflags, bool additive = false) {
 	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
 	if (tid >= siz) return;
 	int pos[3] = { -2,-2,-2 };
@@ -3066,7 +3066,7 @@ __global__ void enforce_period_boundary_vertex_kernel(int siz, devArray_t<T*, 3>
 
 	int gsid = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
 	VertexFlags vflag = vflags[gsid];
-	T val[3] = { /*v[0][gsid],v[1][gsid],v[2][gsid]*/ };
+	T val[N] = { /*v[0][gsid],v[1][gsid],v[2][gsid]*/ };
 	int op_ids[8] = { -1 ,-1,-1,-1, -1 ,-1,-1,-1 };
 	{
 		// sum opposite 
@@ -3084,7 +3084,7 @@ __global__ void enforce_period_boundary_vertex_kernel(int siz, devArray_t<T*, 3>
 					if (k) op_pos[2] += ereso[2];
 					int op_id = lexi2gs(op_pos, gGsVertexReso, gGsVertexEnd);
 					op_ids[i * 4 + j * 2 + k] = op_id;
-					if (additive) for (int m = 0; m < 3; m++) val[m] += v[m][op_id];
+					if (additive) for (int m = 0; m < N; m++) val[m] += v[m][op_id];
 				}
 			}
 		}
@@ -3095,12 +3095,12 @@ __global__ void enforce_period_boundary_vertex_kernel(int siz, devArray_t<T*, 3>
 	for (int i = 0; i < 8; i++) {
 		if (op_ids[i] != -1) {
 			if (additive)
-				for (int j = 0; j < 3; j++) v[j][op_ids[i]] = val[j];
+				for (int j = 0; j < N; j++) v[j][op_ids[i]] = val[j];
 			else 
-				for (int j = 0; j < 3; j++) v[j][op_ids[i]] = v[j][gsid];
+				for (int j = 0; j < N; j++) v[j][op_ids[i]] = v[j][gsid];
 		}
 	}
-	if (additive) { for (int j = 0; j < 3; j++) v[j][gsid] = val[j]; }
+	if (additive) { for (int j = 0; j < N; j++) v[j][gsid] = val[j]; }
 
 }
 template<typename T, int N>
@@ -3302,12 +3302,12 @@ __global__ void enforce_period_boundary_vertex_aos_kernel(int siz, VecIter v, Ve
 
 }
 
-void homo::Grid::enforce_period_vertex(double* v[3], bool additive /*= false*/)
-{
+template <typename T, int N>
+void enforce_period_vertex_imp(T **v, std::array<int, 3> cellReso, VertexFlags *vertflag, bool additive /*= false*/) {
 	int nvdup = cellReso[0] * cellReso[1]
 		+ cellReso[1] * (cellReso[2] - 1)
 		+ (cellReso[0] - 1) * (cellReso[2] - 1);
-	devArray_t<double*, 3> varr{ v[0],v[1],v[2] };
+	devArray_t<T*, N> varr(v);
 	size_t grid_size, block_size;
 	make_kernel_param(&grid_size, &block_size, nvdup, 256);
 	enforce_period_boundary_vertex_kernel << <grid_size, block_size >> > (nvdup, varr, vertflag, additive);
@@ -3315,18 +3315,14 @@ void homo::Grid::enforce_period_vertex(double* v[3], bool additive /*= false*/)
 	cuda_error_check;
 }
 
+void homo::Grid::enforce_period_vertex(double* v[3], bool additive /*= false*/)
+{
+	enforce_period_vertex_imp<double, 3>(v, cellReso, vertflag, additive);
+}
+
 void homo::Grid::enforce_period_vertex(float* v[3], bool additive /*= false*/)
 {
-	int nvdup = cellReso[0] * cellReso[1]
-		+ cellReso[1] * (cellReso[2] - 1)
-		+ (cellReso[0] - 1) * (cellReso[2] - 1);
-	devArray_t<float*, 3> varr{ v[0],v[1],v[2] };
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, nvdup, 256);
-	enforce_period_boundary_vertex_kernel << <grid_size, block_size >> > (nvdup, varr, vertflag, additive);
-	cudaDeviceSynchronize();
-	cuda_error_check;
-	
+	enforce_period_vertex_imp<float, 3>(v, cellReso, vertflag, additive);
 }
 
 template<typename T>
