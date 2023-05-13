@@ -4519,6 +4519,41 @@ void homo::Grid::projectDensity(float k, float eta, float a, float b)
 	pad_cell_data(rho_g);
 }
 
+double homo::Grid::projectDensityToVolume(float vol, float beta /*= 20*/){
+	useGrid_g();
+	CellFlags* eflags = cellflag;
+	int ne_gs = n_gscells();
+	int ne = cellReso[0] * cellReso[1] * cellReso[2];
+	float c_low = 0, c_up = 1;
+	float c = (c_low + c_up) / 2;
+	for (int iter = 0; iter < 20; iter++) {
+		c = (c_low + c_up) / 2;
+		float *rholist = rho_g;
+		auto ker = [=] __device__(int tid) {
+			auto eflag = eflags[tid];
+			float rho = rholist[tid];
+			rho = sigmoid(rho, beta, c);
+			if (rho < 1e-9) rho = 1e-9;
+			if (rho > 1) rho = 1;
+			if (eflag.is_fiction() || eflag.is_period_padding())
+				rho = 0;
+			return rho;
+		};
+		auto rhoSum = sequence_sum(ker, ne_gs, 0.f);
+		double cur_vol = rhoSum / ne;
+		printf("searching isovalue c = %4.2e, v = %4.2e%%, it. %02d     \r", c, cur_vol * 100, iter);
+		if (cur_vol < vol - 0.0001) {
+			c_up = c;
+		} else if (cur_vol > vol + 0.0001) {
+			c_low = c;
+		} else {
+			break;
+		}
+	}
+	printf("\n");
+	return c;
+}
+
 float homo::Grid::sumDensity(void)
 {
 	CellFlags* eflags = cellflag;
