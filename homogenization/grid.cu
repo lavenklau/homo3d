@@ -380,7 +380,9 @@ __global__ void gs_relaxation_otf_kernel(
 	VertexFlags vflag;
 	if (!fiction) {
 		vflag = vflags[vid];
-		fiction = fiction || vflag.is_fiction();
+		fiction = fiction || vflag.is_fiction() || vflag.is_period_padding();
+	}
+	if(!fiction) {
 		indexer.locate(vid, vflag.get_gscolor(), gsVertexEnd);
 	}
 	
@@ -918,12 +920,12 @@ __global__ void restrict_residual_kernel_1(
 	if (tid >= nv_coarse) return;
 
 	VertexFlags vflag = vflags[tid];
-	bool fiction = vflag.is_fiction();
+	bool fiction = vflag.is_fiction() || vflag.is_period_padding();
 
 	int setid = vflag.get_gscolor();
 
 	GridVertexIndex indexer(gGridCellReso[0], gGridCellReso[1], gGridCellReso[2]);
-	indexer.locate(tid, vflag.get_gscolor(), gsVertexEnd);
+	if(!fiction) indexer.locate(tid, vflag.get_gscolor(), gsVertexEnd);
 
 	int coarseRatio[3] = { gUpCoarse[0], gUpCoarse[1], gUpCoarse[2] };
 	float pr = coarseRatio[0] * coarseRatio[1] * coarseRatio[2];
@@ -998,7 +1000,7 @@ __global__ void restrict_stencil_kernel_1(
 	VertexFlags vflag;
 	if (!fiction) { 
 		vflag = vflags[tid]; 
-		fiction = vflag.is_fiction();
+		fiction = vflag.is_fiction() || vflag.is_period_padding();
 	}
 
 	int coarseRatio[3] = { gUpCoarse[0], gUpCoarse[1], gUpCoarse[2] };
@@ -1006,7 +1008,7 @@ __global__ void restrict_stencil_kernel_1(
 	double pr = coarseRatio[0] * coarseRatio[1] * coarseRatio[2];
 
 	GridVertexIndex indexer(gGridCellReso[0], gGridCellReso[1], gGridCellReso[2]);
-	indexer.locate(tid, vflag.get_gscolor(), gsVertexEnd);
+	if(!fiction) indexer.locate(tid, vflag.get_gscolor(), gsVertexEnd);
 
 	bool nondyadic = coarseRatio[0] > 2 || coarseRatio[1] > 2 || coarseRatio[2] > 2;
 
@@ -1287,7 +1289,7 @@ __global__ void update_residual_otf_kernel_1(
 	VertexFlags vflag;
 	if (!fiction) {
 		vflag = vflags[vid];
-		fiction = fiction || vflag.is_fiction();
+		fiction = fiction || vflag.is_fiction() || vflag.is_period_padding();
 	}
 	int set_id = vflag.get_gscolor();
 
@@ -1468,12 +1470,12 @@ __global__ void update_residual_kernel_1(
 
 	VertexFlags vflag;
 	if (!fiction) vflag = vflags[vid];
-	fiction = fiction || vflag.is_fiction();
+	fiction = fiction || vflag.is_fiction() || vflag.is_period_padding();
 	int color = vflag.get_gscolor();
 
 
 	GridVertexIndex indexer(gGridCellReso[0], gGridCellReso[1], gGridCellReso[2]);
-	indexer.locate(vid, vflag.get_gscolor(), gsVertexEnd);
+	if(!fiction) indexer.locate(vid, vflag.get_gscolor(), gsVertexEnd);
 
 	double KeU[3] = { 0. };
 	if (!fiction && !vflag.is_period_padding()) {
@@ -1817,13 +1819,13 @@ __global__ void enforce_unit_macro_strain_kernel(
 	VertexFlags vflag;
 	if (!fiction) {
 		vflag = vflags[tid];
-		fiction = vflag.is_fiction();
+		fiction = vflag.is_fiction() || vflag.is_period_padding();
 	}
 
 	int vid = tid;
 
 	GridVertexIndex indexer(gGridCellReso[0], gGridCellReso[1], gGridCellReso[2]);
-	indexer.locate(vid, vflag.get_gscolor(), gGsVertexEnd);
+	if(!fiction) indexer.locate(vid, vflag.get_gscolor(), gGsVertexEnd);
 
 	short3 vpos = indexer.getPos();
 
@@ -2183,6 +2185,8 @@ __global__ void set_macro_strain_displacement_kernel(
 
 	int vid = tid;
 	VertexFlags vflag = vflags[vid];
+
+	if(vflag.is_fiction() || vflag.is_period_padding()) return;
 
 	GridVertexIndex indexer(gGridCellReso[0], gGridCellReso[1], gGridCellReso[2]);
 	indexer.locate(vid, vflag.get_gscolor(), gGsVertexEnd);
@@ -3825,7 +3829,7 @@ __global__ void v3_stencilOnLeft_kernel(
 	VertexFlags vflag;
 	if (!fiction) {
 		vflag = vflags[vid];
-		fiction = fiction || vflag.is_fiction();
+		fiction = fiction || vflag.is_fiction() || vflag.is_period_padding();
 	}
 	int set_id = vflag.get_gscolor();
 
