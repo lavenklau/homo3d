@@ -160,7 +160,7 @@ double homo::MG::solveEquation(double tol /*= 1e-2*/, bool with_guess /*= true*/
 		rel_res = grids[0]->relative_residual();
 #endif
 		rel_res = grids[0]->residual() / (fnorm + 1e-30);
-		if (rel_res > 1e2 || iter >= 500 || std::isnan(rel_res)) {
+		if (rel_res > 1e2 || std::isnan(rel_res)) {
 			//throw std::runtime_error("numerical failure");
 			printf("\033[31m\nnumerical explode, resetting initial guess...\033[0m\n");
 			grids[0]->v3_toMatlab("ferr", grids[0]->getForce());
