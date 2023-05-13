@@ -2702,12 +2702,21 @@ void homo::Grid::enforce_period_stencil(bool additive)
 	cuda_error_check;
 #else
 	for (int i = 0; i < 27; i++) {
-		for (int j = 0; j < 9; j+=3) {
-			// USE_DOUBLE_STENCIL
-			double* st[3] = { stencil_g[i][j],stencil_g[i][j + 1],stencil_g[i][j + 2] };
-			enforce_period_vertex(st, additive);
-			pad_vertex_data(st);
+		double *st[9];
+		for (int j = 0; j < 9; j++) {
+			st[j] = stencil_g[i][j];
 		}
+		enforce_period_vertex_imp<double, 9>(st, cellReso, vertflag, additive);
+	}
+	if(is_root) {
+		restrict_stencil_arround_dirichelt_boundary();
+	}
+	for (int i = 0; i < 27; i++) {
+		double *st[9];
+		for (int j = 0; j < 9; j++) {
+			st[j] = stencil_g[i][j];
+		}
+		pad_vertex_data_imp<double, 9>(st, cellReso, vertflag);
 	}
 #endif
 }
