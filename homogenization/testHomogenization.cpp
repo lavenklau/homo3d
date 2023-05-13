@@ -8,6 +8,9 @@
 #include <tuple>
 #include "cuda_profiler_api.h"
 #include "matlab/matlab_utils.h"
+#include <filesystem>
+#include <string>
+#include <regex>
 
 using namespace homo;
 
@@ -81,6 +84,58 @@ std::map<std::tuple<char, char, char, char, char>, Eigen::Matrix<int, 8, 1>> get
 	return lamu;
 }
 
+void batchForwardMeasure(cfg::HomoConfig config) {
+	Homogenization hom(config);
+	for(const auto& entry : std::filesystem::recursive_directory_iterator(config.inputrho)) {
+		auto fn = entry.path().stem().string();
+		if (fn == "rho") {
+			auto cmd = entry.path().parent_path() / "cmdline";
+			std::cout << "[log] reading cmdline " << cmd << std::endl;
+			std::ifstream ifs(cmd);
+			if (!ifs) {
+				std::cerr << "cannot find file " << cmd << std::endl;
+				continue;
+			}
+			std::string sbuf((std::istream_iterator<char>(ifs)), (std::istream_iterator<char>()));
+			std::regex volreg("(.|\n)*--vol=([0-9]?\\.[0-9]*)");
+			std::smatch results;
+			std::regex_match(sbuf, results, volreg);
+			double volRatio = std::stod(results[2].str());
+			std::cout << "matched volRatio = " << volRatio << std::endl;
+			hom.logger() << "Goal volRatio = " << volRatio << std::endl;
+
+			std::cout << "[log] reading file " << entry.path() << std::endl;
+
+			hom.logger() << "reading file " << entry.path() << std::endl;
+			hom.getGrid()->readDensity(entry.path().string(), VoxelIOFormat::openVDB);
+			double c = hom.getGrid()->projectDensityToVolume(volRatio, 40);
+			auto ereso = hom.getGrid()->cellReso;
+			double vol = hom.getGrid()->sumDensity() / (ereso[0] * ereso[1] * ereso[2]);
+			hom.logger() << "vol = " << vol << ", c = " << c << std::endl;
+			std::cout << " vol = " << vol << ", c = " << c << std::endl;
+			hom.mg_->updateStencils();
+			hom.mg_->reset_displacement();
+			double Ch[6][6];
+			std::cout << "evaluating..." << std::endl;
+			try {
+				hom.elasticMatrix(Ch);
+			}
+			catch(...){
+				std::cerr << "failed at file " << entry.path() << std::endl;
+				for (int i = 0; i < 36; i++)
+					Ch[i / 6][i % 6] = std::numeric_limits<double>::quiet_NaN();
+			}
+			std::ostringstream ostr;
+			for (int i = 0; i < 36; i++) {
+				ostr << Ch[i / 6][i % 6] << " ";
+			}
+			std::cout << "Ch = \n"
+					  << Eigen::Matrix<double, 6, 6>::Map(Ch[0]) << std::endl;
+			hom.logger() << "Ch = " << ostr.str() << std::endl;
+		}
+	}
+}
+
 void testHomogenization(cfg::HomoConfig config) {
 #if 0
 	Homogenization hom(64, 64, 64);
@@ -131,6 +186,9 @@ void testHomogenization(cfg::HomoConfig config) {
 
 	if (config.testname == "") {
 	
+	}
+	else if(config.testname=="measure") {
+		batchForwardMeasure(config);
 	}
 	else if (config.testname == "vidmap") {
 		Homogenization hom(256, 256, 256);
