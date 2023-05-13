@@ -2219,6 +2219,8 @@ __global__ void set_macro_strain_displacement_kernel(
 
 void homo::Grid::setMacroStrainDisplacement(int i, double* u[3])
 {
+	NO_SUPPORT_ERROR;
+	#if 0
 	size_t grid_size, block_size;
 	make_kernel_param(&grid_size, &block_size, n_gsvertices(), 256);
 	devArray_t<double*, 3> ug{ u[0],u[1],u[2] };
@@ -2226,6 +2228,8 @@ void homo::Grid::setMacroStrainDisplacement(int i, double* u[3])
 	set_macro_strain_displacement_kernel << <grid_size, block_size >> > (n_gsvertices(), i, vflags, ug);
 	cudaDeviceSynchronize();
 	cuda_error_check;
+	pad_vertex_data(u);
+	#endif
 }
 
 template<typename T>
