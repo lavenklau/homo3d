@@ -446,7 +446,9 @@ void homo::Grid::assembleHostMatrix(void)
 	Eigen::FullPivLU<Eigen::Matrix<double, -1, -1>> dec;
 	dec.setThreshold(5e-4);
 	dec.compute(fk);
-	transBase = dec.kernel();
+	// transBase = dec.kernel();
+	transBase.resize(Khost.rows(), 1);
+	transBase.fill(0);
 #endif
 	for (int i = 0; i < transBase.cols(); i++) {
 		for (int j = 0; j < i; j++) {
