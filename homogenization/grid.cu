@@ -3564,7 +3564,7 @@ void homo::Grid::pad_vertex_data(double* v[3])
 }
 
 void homo::Grid::pad_vertex_data(glm::mat3* v) {
-	glm::mat3* varr[1];
+	glm::mat3 *varr[1] = {v};
 	pad_vertex_data_imp<glm::mat3, 1>(varr, cellReso, vertflag);
 }
 
