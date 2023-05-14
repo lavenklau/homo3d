@@ -517,6 +517,10 @@ namespace homo {
 		__host_device_func auto exp(void) {
 			return exp_exp_t<subExp_t, Scalar>(static_cast<subExp_t*>(this)->template refer<>());
 		}
+
+		__host_device_func auto sgm(Scalar s, Scalar c) {
+			return sgm_exp_t<subExp_t, Scalar>(static_cast<subExp_t *>(this)->template refer<>(), s, c);
+		}
 	};
 
 	template<typename subExp_t, typename Scalar = double, bool HasStorage = true, bool HasFlag = false>
@@ -793,13 +797,13 @@ namespace homo {
 		: public unary_exp_t<sgm_exp_t, opExp_t, Scalar>
 	{
 		using Base = unary_exp_t<sgm_exp_t, opExp_t, Scalar>;
-		Scalar s = 1;
-		__host_device_func sgm_exp_t(const opExp_t& op, Scalar s_ = 1)
-			: Base(op), s(s_)
+		Scalar s = 1, c = 0;
+		__host_device_func sgm_exp_t(const opExp_t &op, Scalar s_ = 1, Scalar c_ = 0)
+			: Base(op), s(s_), c(c_)
 		{ }
 
 		__host_device_func Scalar eval_imp(void) {
-			return 1. / (1 + exp(-s * Base::op.eval()));
+			return 1. / (1 + exp_(-s * (Base::op.eval() - c)));
 		}
 
 		__host_device_func void backward_imp(Scalar lastdiff) {
