@@ -50,7 +50,7 @@ __global__ void elasticMatrix_kernel_wise(
 	if (elementId != -1) {
 		CellFlags eflag = eflags[elementId];
 		if (!eflag.is_fiction() && !eflag.is_period_padding()) {
-			float prho = powf(rholist[elementId], exp_penal[0]);
+			float prho = rhoPenalMin + powf(rholist[elementId], exp_penal[0]);
 			//float prho = rholist[elementId];
 			float c = 0;
 			//int neighVid[8];
@@ -154,7 +154,7 @@ __global__ void elasticMatrix_kernel_wise_opt(
 	if (!is_ghost) {
 		elementId = indexer.neighElement(0, gGsCellEnd, gGsCellReso).getId();
 		eflag = eflags[elementId];
-		prho = powf(rholist[elementId], exp_penal[0]);
+		prho = rhoPenalMin + powf(rholist[elementId], exp_penal[0]);
 	}
 	if (elementId != -1 && !is_ghost) {
 		is_ghost = is_ghost || eflag.is_fiction() || eflag.is_period_padding();
@@ -259,7 +259,7 @@ __global__ void elasticMatrix_kernel_opt(
 	CellFlags eflag;
 	int ev[8];
 	if (elementId != -1 && !is_ghost) {
-		prho = powf(float(rholist[elementId]), exp_penal[0]);
+		prho = rhoPenalMin + powf(float(rholist[elementId]), exp_penal[0]);
 		eflag = eflags[elementId];
 		is_ghost = is_ghost || eflag.is_fiction() || eflag.is_period_padding();
 		if (!is_ghost) {

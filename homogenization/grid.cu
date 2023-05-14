@@ -412,7 +412,7 @@ __global__ void gs_relaxation_otf_kernel(
 		float penal = exp_penal[0];
 		if (elementId != -1) {
 			eflag = eflags[elementId];
-			if (!eflag.is_fiction()) rho_penal = powf(float(rholist[elementId]), penal);
+			if (!eflag.is_fiction()) rho_penal = rhoPenalMin + powf(float(rholist[elementId]), penal);
 		}
 
 		if (elementId != -1 && !eflag.is_fiction() /*&& !eflag.is_period_padding()*/) {
@@ -771,7 +771,7 @@ __global__ void restrict_stencil_otf_kernel_1(
 	float rho_penal = 0.f;
 
 	if (!fiction) {
-		rho_penal = powf(rholist[tid], exp_penal[0]);
+		rho_penal = rhoPenalMin + powf(rholist[tid], exp_penal[0]);
 	}
 
 	// typical error
@@ -1338,7 +1338,7 @@ __global__ void update_residual_otf_kernel_1(
 	float penal = exp_penal[0];
 	if (elementId != -1) {
 		eflag = eflags[elementId];
-		if (!eflag.is_fiction()) rhop = powf(float(rholist[elementId]), penal);
+		if (!eflag.is_fiction()) rhop = rhoPenalMin + powf(float(rholist[elementId]), penal);
 	}
 
 	// DEBUG
@@ -1868,7 +1868,7 @@ __global__ void enforce_unit_macro_strain_kernel(
 			if (neighEid == -1) continue;
 			CellFlags eflag = eflags[neighEid];
 			// if (eflag.is_fiction() || eflag.is_period_padding()) continue;
-			float rho_penal = powf(rholist[neighEid], exp_penal[0]);
+			float rho_penal = rhoPenalMin + powf(rholist[neighEid], exp_penal[0]);
 			int kirow = (7 - ei) * 3;
 #if USE_LAME_MATRIX
 			//float flamchar[6][3] = { 0 };
@@ -2111,7 +2111,7 @@ __global__ void compliance_kernel(
 		if (!eflag.is_fiction() && !eflag.is_period_padding()) {
 			float prho;
 			float pwn = exp_penal[0];
-			prho = powf(rholist[elementId], pwn);
+			prho = rhoPenalMin + powf(rholist[elementId], pwn);
 			//float prho = rholist[elementId];
 			float c = 0;
 			//int neighVid[8];
@@ -3760,7 +3760,7 @@ __global__ void v3_stencilOnLeft_kernel(
 	float penal = exp_penal[0];
 	if (elementId != -1) {
 		eflag = eflags[elementId];
-		if (!eflag.is_fiction()) rho_penal = powf(float(rholist[elementId]), penal);
+		if (!eflag.is_fiction()) rho_penal = rhoPenalMin + powf(float(rholist[elementId]), penal);
 	}
 
 	if (elementId != -1 && !eflag.is_fiction() && !vflag.is_fiction() && !vflag.is_period_padding()) {

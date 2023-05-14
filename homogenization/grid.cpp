@@ -921,7 +921,7 @@ Eigen::SparseMatrix<double> homo::Grid::stencil2matrix(bool removePeriodDof /*= 
 		Eigen::Matrix<float, 24, 24> ke = getTemplateMatrix();
 		for (int i = 0; i < eflags.size(); i++) {
 			if (eflags[i].is_fiction() || eflags[i].is_period_padding()) continue;
-			float rho_p = powf(rhohost[i], 1);
+			float rho_p = rhoPenalMin + powf(rhohost[i], 1);
 			int epos[3];
 			egsid2lexpos_h(i, epos);
 			for (int vi = 0; vi < 8; vi++) {
@@ -1196,7 +1196,7 @@ void homo::Grid::restrict_stencil_arround_dirichelt_boundary(void) {
 				};
 				int eid = epos[0] + epos[1] * finereso[0] + epos[2] * finereso[0] * finereso[1];
 				int egsid = fine->elexid2gsid(eid);
-				float prho = powf(rholist[egsid], exp_penal);
+				float prho = rhoPenalMin + powf(rholist[egsid], exp_penal);
 				pos2rho[{xc_off, yc_off, zc_off}] = prho;
 				// printf("e(%d, %d, %d) = %4.2e\n", xc_off, yc_off, zc_off, prho);
 			}

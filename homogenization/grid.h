@@ -419,3 +419,6 @@ extern std::string getPath(const std::string& str);
 extern std::string setPathPrefix(const std::string& str);
 
 }
+
+
+constexpr float rhoPenalMin = 1e-9;
