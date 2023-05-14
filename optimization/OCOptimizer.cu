@@ -33,9 +33,10 @@ __global__ void update_kernel(int ne,
 	rhonew[tid] = newrho;
 }
 
-
-
-void OCOptimizer::update(const float* sens, float* rho, float volratio) {
+template <typename ProjectKernel>
+void update_imp(int ne, float minRho, const float *sens, float *rho, float volratio,
+ float step_limit, float damp, ProjectKernel projker)
+{
 	float* newrho;
 	cudaMalloc(&newrho, sizeof(float) * ne);
 	float maxSens = abs(parallel_maxabs(sens, ne));
@@ -49,7 +50,14 @@ void OCOptimizer::update(const float* sens, float* rho, float volratio) {
 			minRho, step_limit, damp);
 		cudaDeviceSynchronize();
 		cuda_error_check;
-		float curVol = parallel_sum(newrho, ne) / ne;
+		auto rhoPhys = [=] __device__ (int tid) {
+			var_exp_t<> rhovar(newrho[tid]);
+			auto proj = projker;
+			//auto rhoexp = proj.template evalExp(rhovar);
+			float xphys = proj.eval(rhovar).value();
+			return xphys;
+		};
+		float curVol = sequence_sum(rhoPhys, ne, 0.f) / ne;
 		printf("[OC] : g = %.4e   vol = %4.2f%% (Goal %4.2f%%)       \r", gSens, curVol * 100, volratio * 100);
 		if (curVol < volratio - 0.0001) {
 			maxSens = gSens;
@@ -64,6 +72,13 @@ void OCOptimizer::update(const float* sens, float* rho, float volratio) {
 	printf("\n");
 	cudaMemcpy(rho, newrho, sizeof(float) * ne, cudaMemcpyDeviceToDevice);
 	cudaFree(newrho);
+}
+
+template<> void OCOptimizer<eye_umker_t<float>>::update(const float* sens, float* rho, float volratio) {
+	update_imp<eye_umker_t<float>>(ne, minRho, sens, rho, volratio, step_limit, damp, projKer);
+}
+template<> void OCOptimizer<sigmoid_umker_t<float>>::update(const float* sens, float* rho, float volratio) {
+	update_imp<sigmoid_umker_t<float>>(ne, minRho, sens, rho, volratio, step_limit, damp, projKer);
 }
 
 __device__ bool is_bounded(int p[3], int reso[3]) {
@@ -131,7 +146,8 @@ __global__ void weightSum_kernel(int ne, devArray_t<int, 3> reso, size_t pitchT,
 	weightSum[eid] = wsum;
 }
 
-void OCOptimizer::filterSens(float* sens, const float* rho, size_t pitchT, int reso[3], float radius)
+template <typename ProjectKernel>
+void filterSens_imp(int ne, float *sens, const float *rho, size_t pitchT, int reso[3], float radius, ProjectKernel projker)
 {
 	static float* filterWeightSum = nullptr;
 	if (!filterWeightSum) {
@@ -151,7 +167,14 @@ void OCOptimizer::filterSens(float* sens, const float* rho, size_t pitchT, int r
 	cudaFree(newsens);
 }
 
-template<typename Kernel>
+template<> void OCOptimizer<eye_umker_t<float>>::filterSens(float* sens, const float* rho, size_t pitchT, int reso[3], float radius){
+	filterSens_imp<eye_umker_t<float>>(ne, sens, rho, pitchT, reso, radius, projKer);
+}
+template<> void OCOptimizer<sigmoid_umker_t<float>>::filterSens(float* sens, const float* rho, size_t pitchT, int reso[3], float radius){
+	filterSens_imp<sigmoid_umker_t<float>>(ne, sens, rho, pitchT, reso, radius, projKer);
+}
+
+template <typename Kernel>
 __global__ void filterSens_Tensor_kernel(
 	TensorView<float> sens, TensorView<float> rho, TensorView<float> newsens, Kernel wfunc) {
 	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
@@ -182,7 +205,8 @@ __global__ void filterSens_Tensor_kernel(
 	newsens(epos[0], epos[1], epos[2]) = sum;
 }
 
-void OCOptimizer::filterSens(Tensor<float> sens, Tensor<float> rho, float radius /*= 2*/) {
+template <typename ProjKernel>
+void filterSens_imp(Tensor<float> sens, Tensor<float> rho, float radius) {
 	Tensor<float> newsens(rho.getDim());
 	newsens.reset(0);
 	radial_convker_t<float, Linear> convker(radius, 0, true, false);
@@ -192,6 +216,13 @@ void OCOptimizer::filterSens(Tensor<float> sens, Tensor<float> rho, float radius
 	cudaDeviceSynchronize();
 	cuda_error_check;
 	sens.copy(newsens);
+}
+
+template<> void OCOptimizer<eye_umker_t<float>>::filterSens(Tensor<float> sens, Tensor<float> rho, float radius /*= 2*/) {
+	filterSens_imp<eye_umker_t<float>>(sens, rho, radius);
+}
+template<> void OCOptimizer<sigmoid_umker_t<float>>::filterSens(Tensor<float> sens, Tensor<float> rho, float radius /*= 2*/) {
+	filterSens_imp<sigmoid_umker_t<float>>(sens, rho, radius);
 }
 
 template<typename T>
@@ -215,7 +246,8 @@ __global__ void update_Tensor_kernel(TensorView<T> sens, T g,
 	rhonew(tid) = newrho;
 }
 
-void OCOptimizer::update(Tensor<float> sens, Tensor<float> rho, float volratio) {
+template <typename ProjKernel>
+void update_imp(Tensor<float> sens, Tensor<float> rho, float volratio, float minRho, float step_limit, float damp, ProjKernel projker) {
 	Tensor<float> newrho(rho.getDim());
 	newrho.reset(0);
 	float maxSens = abs(sens.maxabs());
@@ -230,7 +262,13 @@ void OCOptimizer::update(Tensor<float> sens, Tensor<float> rho, float volratio) 
 		cudaDeviceSynchronize();
 		cuda_error_check;
 		//float curVol = parallel_sum(newrho, ne) / ne;
-		float curVol = newrho.sum() / newrho.size();
+		auto newrhoAcc=newrho.view();
+		auto sumPhys = [=]__device__(int tid){
+			var_exp_t<> rhovar(newrhoAcc(tid));
+			auto proj = projker;
+			return proj.eval(rhovar).value();
+		};
+		float curVol = sequence_sum(sumPhys, newrhoAcc.size(), 0.f) / newrho.size();
 		printf("[OC] : g = %.4e   vol = %4.2f%% (Goal %4.2f%%)       \r", gSens, curVol * 100, volratio * 100);
 		if (curVol < volratio - 0.0001) {
 			maxSens = gSens;
@@ -246,4 +284,11 @@ void OCOptimizer::update(Tensor<float> sens, Tensor<float> rho, float volratio) 
 	rho.copy(newrho);
 }
 
+template<> void OCOptimizer<eye_umker_t<float>>::update(Tensor<float> sens, Tensor<float> rho, float volratio) {
+	update_imp<eye_umker_t<float>>(sens, rho, volratio, minRho, step_limit, damp, projKer);
+}
+
+template<> void OCOptimizer<sigmoid_umker_t<float>>::update(Tensor<float> sens, Tensor<float> rho, float volratio) {
+	update_imp<sigmoid_umker_t<float>>(sens, rho, volratio, minRho, step_limit, damp, projKer);
+}
 

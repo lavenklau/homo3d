@@ -121,7 +121,7 @@ void test_OC(void) {
 
 	// OC optimizer
 	int ne = pow(reso, 3);
-	OCOptimizer oc(ne, 0.001, 0.02, 0.5);
+	OCOptimizer<> oc(ne, 0.001, 0.02, 0.5);
 	for (int iter = 0; iter < 1000; iter++) {
 		float val = objective.eval();
 		printf("\033[32m\n * Iter %d   obj = %.4e\033[0m\n", iter, val);
@@ -284,7 +284,7 @@ void optiBulk(cfg::HomoConfig config, var_tsexp_t<>& rho, Homogenization& hom, e
 	int reso = ereso[0];
 	int ne = rho.value().size();
 	// create a oc optimizer
-	OCOptimizer oc(ne, 0.001, config.designStep, config.dampRatio);
+	OCOptimizer<> oc(ne, 0.001, config.designStep, config.dampRatio/*, sigmoid_umker_t<float>(eye_umker_t<float>(), 20.f, 0.5f)*/);
 	// define objective expression
 	auto objective = -(Ch(0, 0) + Ch(1, 1) + Ch(2, 2) +
 		(Ch(0, 1) + Ch(0, 2) + Ch(1, 2)) * 2) / 3.; // bulk modulus
@@ -336,7 +336,7 @@ void optiShear(cfg::HomoConfig config, var_tsexp_t<>& rho, Homogenization& hom, 
 	int reso = ereso[0];
 	int ne = rho.value().size();
 	// create a oc optimizer
-	OCOptimizer oc(ne, 0.001, config.designStep, config.dampRatio);
+	OCOptimizer<> oc(ne, 0.001, config.designStep, config.dampRatio);
 	// define objective expression
 	auto objective = -(Ch(3, 3) + Ch(4, 4) + Ch(5, 5)) / 3.; // Shear modulus
 	// record objective value
@@ -385,7 +385,7 @@ void optiNpr(cfg::HomoConfig config, var_tsexp_t<>& rho, Homogenization& hom, el
 	int ereso[3] = { rho.value().size(0),rho.value().size(1),rho.value().size(2) };
 	int reso = ereso[0];
 	// create a oc optimizer
-	OCOptimizer oc(ne, 0.001, config.designStep, config.dampRatio);
+	OCOptimizer<> oc(ne, 0.001, config.designStep, config.dampRatio);
 	// record objective value
 	std::vector<double> objlist;
 	// convergence criteria
@@ -529,7 +529,7 @@ void optiCustom(cfg::HomoConfig config) {
 	// record objective value
 	std::vector<double> objlist;
 	// oc optimizer
-	OCOptimizer oc(ne, 0.001, config.designStep, config.dampRatio);
+	OCOptimizer<> oc(ne, 0.001, config.designStep, config.dampRatio);
 	// convergence criteria
 	ConvergeChecker criteria(config.finthres);
 	for (int iter = 0; iter < config.max_iter; iter++) {
