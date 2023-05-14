@@ -263,7 +263,8 @@ namespace homo {
 
 		template<typename T2, std::enable_if_t<std::is_arithmetic_v<T2>, int> = 0>
 		__host_device_func auto operator+(T2 s2) {
-			using T = res_t<Scalar, T2>;
+			// using T = res_t<Scalar, T2>;
+			using T = Scalar;
 			return operator+(scalar_exp_t<T>(T(s2)));
 		}
 
@@ -280,7 +281,8 @@ namespace homo {
 
 		template<typename T2, std::enable_if_t<std::is_arithmetic_v<T2>, int> = 0>
 		__host_device_func auto operator-(T2 s2) {
-			using T = res_t<Scalar, T2>;
+			// using T = res_t<Scalar, T2>;
+			using T = Scalar;
 			return operator+(scalar_exp_t<T>(-T(s2)));
 		}
 
@@ -305,7 +307,8 @@ namespace homo {
 			std::enable_if_t<std::is_arithmetic_v<T2>, int> = 0,
 			std::enable_if_t<!is_linearexp_v<SubExp>, int> = 0 >
 		__host_device_func auto operator*(T2 s2) {
-			using T = res_t<Scalar, T2>;
+			// using T = res_t<Scalar, T2>;
+			using T = Scalar;
 			using E1 = std::decay_t<decltype(static_cast<subExp_t*>(this)->template refer<>())>;
 			return linear_exp_t<T, E1>(LinearTerm<E1,T>(
 				static_cast<subExp_t*>(this)->template refer<>(), T(s2)));
@@ -316,7 +319,8 @@ namespace homo {
 			std::enable_if_t<is_linearexp_v<SubExp>, int> = 0,
 			std::enable_if_t<!std::is_same_v<res_t<Scalar, T2>, Scalar>, int> = 0>
 		__host_device_func auto operator*(T2 s2) {
-			using T = res_t<Scalar, T2>;
+			// using T = res_t<Scalar, T2>;
+			using T = Scalar;
 			auto me = static_cast<SubExp*>(this)->template cast<T>();
 			me.scale(T(s2));
 			return me;
@@ -327,7 +331,8 @@ namespace homo {
 			std::enable_if_t<is_linearexp_v<SubExp>, int> = 0,
 			std::enable_if_t<std::is_same_v<res_t<Scalar, T2>, Scalar>, int> = 0>
 		__host_device_func auto operator*(T2 s2) {
-			using T = res_t<Scalar, T2>;
+			// using T = res_t<Scalar, T2>;
+			using T = Scalar;
 			auto me = *static_cast<SubExp*>(this);
 			me.scale(T(s2));
 			return me;
@@ -346,14 +351,16 @@ namespace homo {
 
 		template<typename T2, std::enable_if_t<std::is_arithmetic_v<T2>, int> = 0>
 		__host_device_func auto operator/(T2 s2) {
-			using T = res_t<Scalar, T2>;
+			// using T = res_t<Scalar, T2>;
+			using T = Scalar;
 			return operator*(T(1) / s2);
 		}
 		// *> end operators
 
 		template<typename T2, std::enable_if_t<std::is_arithmetic_v<T2>, int> = 0 >
 		__host_device_func auto pow(T2 s) {
-			using T = res_t<Scalar, T2>;
+			// using T = res_t<Scalar, T2>;
+			using T = Scalar;
 			return pow_exp_t<subExp_t, T>(static_cast<subExp_t*>(this)->template refer<>(), T(s));
 		}
 
@@ -408,28 +415,32 @@ namespace homo {
 	template<typename T1, typename opExp2, std::enable_if_t<std::is_arithmetic_v<T1>, int> = 0, if_exp_t<opExp2, int> = 0>
 	__host_device_func auto operator+(T1 s1,  opExp2&& op2) {
 		using opExp2_t = std::decay_t<opExp2>;
-		using T = res_t<typename opExp2_t::ScalarType, T1>;
+		// using T = res_t<typename opExp2_t::ScalarType, T1>;
+		using T = typename opExp2_t::ScalarType;
 		return scalar_exp_t<T>(T(s1)) + op2;
 	}
 
 	template<typename T1, typename opExp2, std::enable_if_t<std::is_arithmetic_v<T1>, int> = 0, if_exp_t<opExp2, int> = 0>
 	__host_device_func auto operator-(T1 s1,  opExp2&& op2) {
 		using opExp2_t = std::decay_t<opExp2>;
-		using T = res_t<typename opExp2_t::ScalarType, T1>;
+		// using T = res_t<typename opExp2_t::ScalarType, T1>;
+		using T = typename opExp2_t::ScalarType;
 		return scalar_exp_t<T>(T(s1)) - op2;
 	}
 
 	template<typename T1, typename opExp2, std::enable_if_t<std::is_arithmetic_v<T1>, int> = 0, if_exp_t<opExp2, int> = 0>
 	__host_device_func auto operator*(T1 s1, opExp2&& op2) {
 		using opExp2_t = std::decay_t<opExp2>;
-		using T = res_t<typename opExp2_t::ScalarType, T1>;
+		// using T = res_t<typename opExp2_t::ScalarType, T1>;
+		using T = typename opExp2_t::ScalarType;
 		return scalar_exp_t<T>(T(s1)) * op2;
 	}
 
 	template<typename T1, typename opExp2, std::enable_if_t<std::is_arithmetic_v<T1>, int> = 0, if_exp_t<opExp2, int> = 0>
 	__host_device_func auto operator/(T1 s1, opExp2&& op2) {
 		using opExp2_t = std::decay_t<opExp2>;
-		using T = res_t<typename opExp2_t::ScalarType, T1>;
+		// using T = res_t<typename opExp2_t::ScalarType, T1>;
+		using T = typename opExp2_t::ScalarType;
 		return scalar_exp_t<T>(T(s1)) / op2;
 	}
 	// *> end operators
