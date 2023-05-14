@@ -377,7 +377,7 @@ namespace homo {
 		}
 	};
 
-	template<typename subExp_t, typename Scalar = double, bool HasStorage = true, bool HasFlag = false>
+	template<typename subExp_t, typename Scalar = float, bool HasStorage = true, bool HasFlag = false>
 	struct exp_t : public exp_base_t, public exp_data_t<subExp_t, Scalar>, public exp_method_t<subExp_t, Scalar>
 	{
 		exp_t(void) = default;
