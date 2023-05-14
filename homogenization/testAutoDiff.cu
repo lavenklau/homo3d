@@ -399,8 +399,8 @@ void optiNpr(cfg::HomoConfig config, var_tsexp_t<>& rho, Homogenization& hom, el
 #if 1
 		//if (iter > 20) beta = 0.1;
 		auto objective = Ch(0, 1) + Ch(0, 2) + Ch(1, 2) -
-			(Ch(0, 0) + Ch(1, 1) + Ch(2, 2)) * powf(beta,iter); 
-#elif 0
+						 (Ch(0, 0) + Ch(1, 1) + Ch(2, 2)) * powf(beta, iter);
+#elif 1
 		//auto objective = ((Ch(0, 1) + Ch(0, 2) + Ch(1, 2))
 		//	/ (Ch(0, 0) + Ch(1, 1) + Ch(2, 2)) * beta + 1).log() - (Ch(0, 0) + Ch(1, 1) + Ch(2, 2)).pow(0.5f) * 1e-3f;
 		auto objective = ((Ch(0, 1) + Ch(0, 2) + Ch(1, 2))
