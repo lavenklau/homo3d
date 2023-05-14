@@ -54,8 +54,9 @@ namespace homo {
 	template<typename opExp_t, typename Scalar> struct pow_exp_t;
 	template<typename opExp_t, typename Scalar> struct ln_exp_t;
 	template<typename opExp_t, typename Scalar> struct exp_exp_t;
-	template<typename Scalar = double> struct scalar_exp_t;
-	template<typename subVar = void, typename Scalar = double> struct var_exp_t;
+	template<typename opExp_t, typename Scalar> struct sgm_exp_t;
+	template<typename Scalar = float> struct scalar_exp_t;
+	template<typename subVar = void, typename Scalar = float> struct var_exp_t;
 	template<typename Scalar> struct rvar_exp_t;
 
 	namespace details {
@@ -221,7 +222,7 @@ namespace homo {
 	};
 
 
-	template<typename subExp_t, typename Scalar = double>
+	template<typename subExp_t, typename Scalar = float>
 	struct exp_data_t {
 		Scalar diff_;
 		Scalar value_;
@@ -235,7 +236,7 @@ namespace homo {
 		__host_device_func const Scalar& rdiff(void) const{ return diff_; }
 	};
 
-	template<typename subExp_t, typename Scalar = double>
+	template<typename subExp_t, typename Scalar = float>
 	struct exp_method_t {
 		using ScalarType = Scalar;
 
@@ -436,8 +437,8 @@ namespace homo {
 	struct dynexp_t
 		: public exp_t<dynexp_t>
 	{
-		virtual double eval(void) = 0;
-		virtual double diff(void) = 0;
+		virtual float eval(void) = 0;
+		virtual float diff(void) = 0;
 	};
 
 	template<typename opExp, typename Scalar>
@@ -592,7 +593,7 @@ namespace homo {
 		__host_device_func Scalar eval_imp(void) {
 			return log_(Base::op.eval());
 		}
-		__host_device_func void backward_imp(double lastdiff) {
+		__host_device_func void backward_imp(Scalar lastdiff) {
 			Base::op.backward(lastdiff / Base::op.value());
 		}
 	};
@@ -656,7 +657,7 @@ namespace homo {
 
 	template<typename subOp, typename Scalar>
 	struct ReduceBase {
-		__host_device_func double reduce(const std::vector<Scalar>& values) {
+		__host_device_func float reduce(const std::vector<Scalar>& values) {
 			static_cast<subOp*>(this)->reduce(values);
 		}
 		__host_device_func void grad(std::vector<Scalar>& grads) {
@@ -711,16 +712,16 @@ namespace homo {
 	struct SoftMaxReduce
 		: public ReduceBase<SoftMaxReduce<Scalar>, Scalar>
 	{
-		std::vector<double> weights;
-		std::vector<double> values;
-		double alpha;
-		double maxValue = 0;
-		__host_device_func SoftMaxReduce(double alpha_) :alpha(alpha_) {}
+		std::vector<float> weights;
+		std::vector<float> values;
+		float alpha;
+		float maxValue = 0;
+		__host_device_func SoftMaxReduce(float alpha_) :alpha(alpha_) {}
 		__host_device_func SoftMaxReduce(SoftMaxReduce&& red) = default;
-		__host_device_func double reduce(const std::vector<double>& values_) {
+		__host_device_func float reduce(const std::vector<float>& values_) {
 			values = values_;
 			weights.resize(values_.size(), 0);
-			double sum = 0;
+			float sum = 0;
 			for (int i = 0; i < values_.size(); i++) {
 				weights[i] = exp(alpha * values_[i]);
 				sum += weights[i];
@@ -733,7 +734,7 @@ namespace homo {
 			return maxValue;
 		}
 
-		__host_device_func void grad(std::vector<double>& grads) {
+		__host_device_func void grad(std::vector<float>& grads) {
 			for (int i = 0; i < values.size(); i++) {
 				grads[i] = weights[i] * (1 + alpha * (values[i] - maxValue));
 			}
@@ -751,10 +752,10 @@ namespace homo {
 	struct softmax_dynexp_t
 		: public reduce_exp_t<softmax_dynexp_t<Scalar>, SoftMaxReduce<Scalar>, Scalar>
 	{
-		__host_device_func softmax_dynexp_t(double alpha) :reduce_exp_t<softmax_dynexp_t<Scalar>, SoftMaxReduce<Scalar>, Scalar>(SoftMaxReduce<Scalar>(alpha)) {}
+		__host_device_func softmax_dynexp_t(float alpha) :reduce_exp_t<softmax_dynexp_t<Scalar>, SoftMaxReduce<Scalar>, Scalar>(SoftMaxReduce<Scalar>(alpha)) {}
 	};
 
-	template<typename Scalar /*= double*/>
+	template<typename Scalar /*= float*/>
 	struct scalar_exp_t
 		:public exp_t<scalar_exp_t<Scalar>, Scalar>
 	{
@@ -764,7 +765,7 @@ namespace homo {
 		__host_device_func void backward_imp(Scalar lastdiff) { }
 	};
 
-	template<typename subVar /*= void*/, typename Scalar /*= double*/>
+	template<typename subVar /*= void*/, typename Scalar /*= float*/>
 	struct var_exp_t
 		: //public exp_base_t
 		public exp_t<var_exp_t<subVar, Scalar>, Scalar, false>
