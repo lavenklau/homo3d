@@ -685,8 +685,7 @@ template<typename Arg> constexpr bool is_##TypeName##_v = is_##TypeName<Arg>::va
 			auto& subker = static_cast<SubKer&>(*this);
 			return pow_umker_t<Scalar, SubKer>(subker, op.p);
 		}
-		template <typename opKer, typename SubKer = subKer,
-				  std::enable_if_t<!is_exp_umker_v<SubKer>, int> = 0
+		template <typename opKer, typename SubKer = subKer
 		> __host_device_func auto composite(const exp_umker_t<Scalar, opKer> &op) {
 			auto &subker = static_cast<SubKer &>(*this);
 			return exp_umker_t<Scalar, SubKer>(subker);
