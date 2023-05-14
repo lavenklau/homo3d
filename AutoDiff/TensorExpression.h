@@ -473,6 +473,7 @@ namespace homo {
 	template<typename Scalar, typename opExp> struct linear_umker_t;
 	template<typename Scalar, typename opExp> struct pow_umker_t;
 	template<typename Scalar, typename opExp> struct exp_umker_t;
+	template<typename Scalar, typename opExp> struct sigmoid_umker_t;
 	template<typename Scalar> struct eye_umker_t;
 
 #define IS_TYPE_V(TypeName) \
@@ -523,6 +524,25 @@ template<typename Arg> constexpr bool is_##TypeName##_v = is_##TypeName<Arg>::va
 			Kernel expker((eye_umker_t<T>()));
 			auto& subexp = *static_cast<SubExp*>(this);
 			return unarymap_tsexp_t<T, Kernel, SubExp>(subexp, expker);
+		}
+
+		template <typename Scalar = T,
+				  typename SubExp = subExp_t,
+				  std::enable_if_t<is_unarymap_tsexp_v<SubExp>, int> = 0>
+		__host_device_func auto sgm(Scalar k = 30, Scalar c = 0.5) {
+			sigmoid_umker_t<T, eye_umker_t<T>> sgmker((eye_umker_t<T>()), k, c);
+			auto &subexp = *static_cast<SubExp *>(this);
+			return subexp.composite(sgmker);
+		}
+
+		template <typename Scalar = T,
+				  typename SubExp = subExp_t,
+				  std::enable_if_t<!is_unarymap_tsexp_v<SubExp>, int> = 0>
+		__host_device_func auto sgm(Scalar k = 30, Scalar c = 0.5) {
+			using Kernel = sigmoid_umker_t<T, eye_umker_t<T>>;
+			Kernel sgmker((eye_umker_t<T>()), k, c);
+			auto& subexp = *static_cast<SubExp*>(this);
+			return unarymap_tsexp_t<T, Kernel, SubExp>(subexp, sgmker);
 		}
 
 		template<typename Scalar = T, 
@@ -671,6 +691,11 @@ template<typename Arg> constexpr bool is_##TypeName##_v = is_##TypeName<Arg>::va
 			auto &subker = static_cast<SubKer &>(*this);
 			return exp_umker_t<Scalar, SubKer>(subker);
 		}
+		template <typename opKer, typename SubKer = subKer
+		> __host_device_func auto composite(const sigmoid_umker_t<Scalar, opKer> &op) {
+			auto &subker = static_cast<SubKer &>(*this);
+			return sigmoid_umker_t<Scalar, SubKer>(subker, op.k, op.c);
+		}
 	};
 
 	template<typename Scalar>
@@ -680,6 +705,12 @@ template<typename Arg> constexpr bool is_##TypeName##_v = is_##TypeName<Arg>::va
 		template<typename rArg>
 		__host_device_func auto evalExp(rArg arg) {
 			return arg;
+		}
+		__host_device_func auto eval(var_exp_t<void,Scalar>& v) {
+			auto expr = evalExp(v.ref());
+			expr.eval();
+			expr.backward(1);
+			return expr;
 		}
 	};
 
@@ -754,6 +785,36 @@ template<typename Arg> constexpr bool is_##TypeName##_v = is_##TypeName<Arg>::va
 		template<typename rArg>
 		__host_device_func auto evalExp(rArg arg) {
 			return op.template evalExp<rArg>(arg).exp();
+		}
+		//using Exp = decltype(((pow_umker_t<Scalar, opExp>*)nullptr)->evalExp(*((rvar_exp_t<Scalar>*)nullptr)));
+		__host_device_func auto eval(var_exp_t<void,Scalar>& v) {
+			auto expr = evalExp(v.ref());
+			expr.eval();
+			expr.backward(1);
+			return expr;
+		}
+		__host_device_func Scalar eval(Scalar val, Scalar& diffe) {
+			rvar_exp_t<Scalar> v(val, diffe);
+			auto expr = evalExp(v);
+			expr.eval();
+			expr.backward(1);
+			//diffe = expr.diff();
+			return expr.value();
+		}
+	};
+
+	template<typename Scalar, typename opExp = eye_umker_t<Scalar>>
+	struct sigmoid_umker_t : public um_ker_t<Scalar, sigmoid_umker_t<Scalar, opExp>>
+	{
+		using opExp_t = opExp;
+		opExp op;
+		Scalar c, k;
+		using Base = um_ker_t<Scalar, sigmoid_umker_t<Scalar, opExp>>;
+		sigmoid_umker_t(opExp op_ = opExp(), Scalar k_ = 30, Scalar c_ = 0.5) : op(op_), k(k_), c(c_) {}
+
+		template<typename rArg>
+		__host_device_func auto evalExp(rArg arg) {
+			return op.template evalExp<rArg>(arg).sgm(k, c);
 		}
 		//using Exp = decltype(((pow_umker_t<Scalar, opExp>*)nullptr)->evalExp(*((rvar_exp_t<Scalar>*)nullptr)));
 		__host_device_func auto eval(var_exp_t<void,Scalar>& v) {
