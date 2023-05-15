@@ -1190,7 +1190,7 @@ void homo::Grid::gs_relaxation(float w_SOR /*= 1.f*/, int times_ /*= 1*/)
 			}
 			else {
 				make_kernel_param(&grid_size, &block_size, n_gs * 13, 32 * 13);
-				gs_relaxation_kernel<<<grid_size, block_size>>>(i, vertflag, w_SOR);
+				gs_relaxation_kernel<<<grid_size, block_size>>>(set_id, vertflag, w_SOR);
 			}
 			cudaDeviceSynchronize();
 			cuda_error_check;
