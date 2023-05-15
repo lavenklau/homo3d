@@ -59,6 +59,17 @@ void writeVectors(const std::string& str, const std::vector<T> (&vecs)[N]){
 	return;
 }
 
+template<typename T>
+void writeVector(const std::string& str, const std::vector<T> &vec){
+	std::ofstream ofs(str, std::ios::binary);
+	if (!ofs) {
+		printf("\033[31mopen file %s failed\033[0m\n", str.c_str());
+		return;
+	}
+	ofs.write((const char *)vec.data(), sizeof(T) * vec.size());
+	return;
+}
+
 template<typename T, int N = 1>
 void readVectors(const std::string& str, std::vector<T>(&vecs)[N]) {
 	std::ifstream ifs(str, std::ios::binary | std::ios::ate);
