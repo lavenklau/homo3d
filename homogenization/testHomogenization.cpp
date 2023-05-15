@@ -580,6 +580,58 @@ void testHomogenization(cfg::HomoConfig config) {
 		_TOC;
 		printf("eigen time usage = %4.2f ms \n", tictoc::get_record("eigen"));
 	}
+	else if(config.testname == "withtransfer") {
+		Homogenization hom(config);
+		if (config.inputrho.empty()) {
+			printf("setting random density field...\n");
+			hom.getGrid()->randDensity();
+		} else {
+			hom.getGrid()->readDensity(config.inputrho, VoxelIOFormat::openVDB);
+		}
+		double Ch[6][6];
+		_TIC("updatest");
+		hom.mg_->updateStencils();
+		_TOC;
+		printf("update stencil  time  =  %4.2f ms\n", tictoc::get_record("updatest"));
+		_TIC("solveeq");
+		hom.elasticMatrix(Ch);
+		_TOC;
+		printf("solve equation  time  =  %4.2f ms\n", tictoc::get_record("solveeq"));
+		//hom.elasticMatrix(Ch);
+		float* sens = getMem().getBuffer(getMem().addBuffer(hom.getGrid()->n_cells() * sizeof(float)))->data<float>();
+		float dch[6][6] = { 1 };
+		// hom.Sensitivity(dch, sens, config.reso[0], true); // warm up
+		_TIC("withtransfer");
+		hom.Sensitivity(dch, sens, config.reso[0], true);
+		_TOC;
+		printf("backward sensitivity time (WI)  =  %4.2f ms\n", tictoc::get_record("withtransfer"));
+	}
+	else if(config.testname == "notransfer"){
+		Homogenization hom(config);
+		if (config.inputrho.empty()) {
+			printf("setting random density field...\n");
+			hom.getGrid()->randDensity();
+		} else {
+			hom.getGrid()->readDensity(config.inputrho, VoxelIOFormat::openVDB);
+		}
+		double Ch[6][6];
+		_TIC("updatest");
+		hom.mg_->updateStencils();
+		_TOC;
+		printf("update stencil  time  =  %4.2f ms\n", tictoc::get_record("updatest"));
+		_TIC("solveeq");
+		hom.elasticMatrix(Ch);
+		_TOC;
+		printf("solve equation  time  =  %4.2f ms\n", tictoc::get_record("solveeq"));
+		//hom.elasticMatrix(Ch);
+		float* sens = getMem().getBuffer(getMem().addBuffer(hom.getGrid()->n_cells() * sizeof(float)))->data<float>();
+		float dch[6][6] = { 1 };
+		// hom.Sensitivity(dch, sens, config.reso[0], true); // warm up
+		_TIC("notransfer");
+		hom.Sensitivity_Without_transfer(dch, sens, config.reso[0], true);
+		_TOC;
+		printf("backward sensitivity time (WO)  =  %4.2f ms\n", tictoc::get_record("notransfer"));
+	}
 	else if (config.testname == "cudatest") {
 		cudaTest();
 	}

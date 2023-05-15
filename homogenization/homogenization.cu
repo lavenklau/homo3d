@@ -947,4 +947,218 @@ void homo::Homogenization::Sensitivity(float dC[6][6], float* sens, int pitchT, 
 	}
 }
 
+template <typename T, int BlockSize = 256>
+__global__ void Sensitivity_kernel_opt_2_WithoutTransfer(
+	int nv, VertexFlags *vflags, CellFlags *eflags,
+	devArray_t<devArray_t<float *, 3>, 6> ucharlist,
+	T *rholist,
+	devArray_t<devArray_t<float, 6>, 6> dc,
+	float *sens, float volume,
+	int pitchT, bool lexiOrder)
+{
+	__shared__ float KE[24][24];
+	__shared__ float dC[6][6];
+	__shared__ float uChi[6][24];
+	__shared__ float uchar[6][24][32];
+	__shared__ float gSum[6][6][4][32];
 
+	int warpId = threadIdx.x / 32;
+	int laneId = threadIdx.x % 32;
+
+	if (warpId < 6 && laneId == 0) {
+		if (warpId == 0) {
+			elementMacroDisplacement<float, 0>(uChi[warpId]);
+		} else if (warpId == 1) {
+			elementMacroDisplacement<float, 1>(uChi[warpId]);
+		} else if (warpId == 2) {
+			elementMacroDisplacement<float, 2>(uChi[warpId]);
+		} else if (warpId == 3) {
+			elementMacroDisplacement<float, 3>(uChi[warpId]);
+		} else if (warpId == 4) {
+			elementMacroDisplacement<float, 4>(uChi[warpId]);
+		} else if (warpId == 5) {
+			elementMacroDisplacement<float, 5>(uChi[warpId]);
+		}
+	}
+
+	if (threadIdx.x < 36) {
+		dC[threadIdx.x / 6][threadIdx.x % 6] = dc[threadIdx.x / 6][threadIdx.x % 6];
+	}
+
+	loadTemplateMatrix(KE);
+
+	bool is_ghost = false;
+
+	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+
+
+	int vid = blockIdx.x * 32 + laneId;
+	
+	is_ghost = vid >= nv;
+
+	VertexFlags vflag;
+	if (!is_ghost) vflag = vflags[vid];
+	if (vflag.is_fiction() || vflag.is_period_padding() || vflag.is_min_boundary()) is_ghost = true;
+
+	GridVertexIndex indexer(gGridCellReso[0], gGridCellReso[1], gGridCellReso[2]);
+
+	if (!is_ghost) {
+		indexer.locate(vid, vflag.get_gscolor(), gGsVertexEnd);
+	}
+
+	int elementId;
+	if (!is_ghost) elementId = indexer.neighElement(0, gGsCellEnd, gGsCellReso).getId();
+
+	float vol_inv = 1.f / volume;
+
+	CellFlags eflag;
+	int ev[8];
+	if (elementId != -1 && !is_ghost) {
+		eflag = eflags[elementId];
+		is_ghost = is_ghost || eflag.is_fiction() || eflag.is_period_padding();
+		if (!is_ghost) {
+			for (int i = 0; i < 8; i++) {
+				int id = i % 2 + i / 2 % 2 * 3 + i / 4 * 9;
+				int neighVid = indexer.neighVertex(id, gGsVertexEnd, gGsVertexReso).getId();
+				ev[i] = neighVid;
+			}
+			if (warpId < 3) {
+#pragma unroll
+				for (int j = 0; j < 3; j++) {
+#pragma unroll
+					for (int i = 0; i < 8; i++) {
+						// float2 chipair = __half22float2(ucharlist[warpId][j][ev[i]]);
+						float2 chipair{ucharlist[warpId * 2][j][ev[i]], ucharlist[warpId * 2 + 1][j][ev[i]]};
+						uchar[warpId * 2][i * 3 + j][laneId] = uChi[warpId * 2][i * 3 + j] - chipair.x;
+						uchar[warpId * 2 + 1][i * 3 + j][laneId] = uChi[warpId * 2 + 1][i * 3 + j] - chipair.y;
+					}
+				}
+			}
+		}
+	}
+	__syncthreads();
+
+	float dc_lane[6][6] = { 0. };
+	float prho = 0;
+	// 8 warp to 32 vertices
+	if (elementId != -1 && !is_ghost) {
+		float pwn = exp_penal[0];
+		prho = pwn * powf(float(rholist[elementId]), pwn - 1);
+#pragma unroll
+		for (int iStrain = 0; iStrain < 6; iStrain++) {
+#pragma unroll
+			for (int jStrain = iStrain; jStrain < 6; jStrain++) {
+				float c[3] = { 0. };
+#pragma unroll
+				for (int ki = 0; ki < 3; ki++) {
+					int kibase = warpId * 3;
+#pragma unroll
+					for (int kj = 0; kj < 24; kj++) {
+						c[ki] += KE[kibase + ki][kj] * uchar[jStrain][kj][laneId];
+					}
+					c[ki] *= uchar[iStrain][kibase + ki][laneId];
+				}
+				dc_lane[iStrain][jStrain] = c[0] + c[1] + c[2];
+			}
+		}
+	}
+	// block reduce
+	if (warpId >= 4) {
+		for (int i = 0; i < 6; i++) {
+			for (int j = i; j < 6; j++) {
+				gSum[i][j][warpId - 4][laneId] = dc_lane[i][j];
+			}
+		}
+	}
+	__syncthreads();
+	if (warpId < 4) {
+		for (int i = 0; i < 6; i++) {
+			for (int j = i; j < 6; j++) {
+				gSum[i][j][warpId][laneId] += dc_lane[i][j];
+			}
+		}
+	}
+	__syncthreads();
+	if (warpId < 2) {
+		for (int i = 0; i < 6; i++) {
+			for (int j = i; j < 6; j++) {
+				gSum[i][j][warpId][laneId] += gSum[i][j][warpId + 2][laneId];
+			}
+		}
+	}
+	__syncthreads();
+	if (warpId < 1 && !is_ghost && elementId != -1) {
+		float s = 0;
+		float vp = vol_inv * prho;
+		for (int i = 0; i < 6; i++) {
+			for (int j = i; j < 6; j++) {
+				dc_lane[i][j] = gSum[i][j][0][laneId] + gSum[i][j][1][laneId];
+				float dclast = dC[i][j];
+				if (i != j) dclast += dC[j][i];
+				s += dc_lane[i][j] * dclast * vp;
+			}
+		}
+		if (!lexiOrder) {
+			sens[elementId] = s;
+		} else {
+			auto p = indexer.getPos();
+			// p -> element pos -> element pos without padding 
+			p.x -= 2; p.y -= 2; p.z -= 2;
+			if (p.x < 0 || p.y < 0 || p.z < 0) print_exception;
+			int lexid = p.x + (p.y + p.z * gGridCellReso[1]) * pitchT;
+			sens[lexid] = s;
+		}
+	}
+}
+
+void homo::Homogenization::Sensitivity_Without_transfer(float dC[6][6], float *sens, int pitchT, bool lexiOrder /*= false*/){
+	grid->useGrid_g();
+	devArray_t<devArray_t<float, 6>, 6> dc;
+	for (int i = 0; i < 6; i++)
+	{
+		for (int j = 0; j < 6; j++)
+		{
+			dc[i][j] = dC[i][j];
+		}
+	}
+
+	init_array(sens, 0.f, grid->cellReso[1] * grid->cellReso[2] * pitchT);
+
+	int nv = grid->n_gsvertices();
+	auto vflags = grid->vertflag;
+	auto eflags = grid->cellflag;
+	auto rholist = grid->rho_g;
+	float volume = grid->n_cells();
+	size_t grid_size, block_size;
+	make_kernel_param(&grid_size, &block_size, nv, 256);
+	if (!config.useManagedMemory) {
+		NO_SUPPORT_ERROR;
+	} else {
+		printf("Sensitivity analysis using managed memory...\n");
+		devArray_t<devArray_t<VT *, 3>, 6> uchar;
+		for (int i = 0; i < 6; i++)
+		{
+			for (int j = 0; j < 3; j++)
+			{
+				uchar[i][j] = grid->uchar_h[i][j];
+			}
+		}
+		make_kernel_param(&grid_size, &block_size, nv * 8, 256);
+		Sensitivity_kernel_opt_2_WithoutTransfer<<<grid_size, block_size>>>(nv, vflags, eflags,
+															uchar,
+															rholist, dc, sens, volume, pitchT, lexiOrder);
+		cudaDeviceSynchronize();
+		cuda_error_check;
+	}
+	cuda_error_check;
+
+	for (int i = 0; i < 3; i++)
+	{
+		cudaMemset(grid->u_g[i], 0, nv * sizeof(float));
+		cudaMemset(grid->r_g[i], 0, nv * sizeof(float));
+		cudaMemset(grid->f_g[i], 0, nv * sizeof(float));
+	}
+	cudaDeviceSynchronize();
+	cuda_error_check;
+
+}

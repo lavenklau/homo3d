@@ -37,6 +37,8 @@ namespace homo {
 
 		void Sensitivity(float dC[6][6], float* sens, int pitchT, bool lexiOrder = false);
 
+		void Sensitivity_Without_transfer(float dC[6][6], float* sens, int pitchT, bool lexiOrder = false);
+
 		std::shared_ptr<Grid> getGrid(void);
 
 		std::ofstream logger();
