@@ -395,12 +395,11 @@ void optiNpr(cfg::HomoConfig config, var_tsexp_t<>& rho, Homogenization& hom, el
 		// abort when cuda error occurs
 		AbortErr();
 		// define objective expression
-		float beta = 0.6; // for relaxed poission ratio objective
-#if 0
-		if (iter > 20) beta = 0.1;
+		float beta = 0.8; // for relaxed poission ratio objective
+#if 1
 		auto objective = Ch(0, 1) + Ch(0, 2) + Ch(1, 2) -
-			(Ch(0, 0) + Ch(1, 1) + Ch(2, 2)) * beta; 
-#elif 1
+			(Ch(0, 0) + Ch(1, 1) + Ch(2, 2)) * powf(beta, iter); 
+#elif 0
 		//auto objective = ((Ch(0, 1) + Ch(0, 2) + Ch(1, 2))
 		//	/ (Ch(0, 0) + Ch(1, 1) + Ch(2, 2)) * beta + 1).log() - (Ch(0, 0) + Ch(1, 1) + Ch(2, 2)).pow(0.5f) * 1e-3f;
 		auto objective = ((Ch(0, 1) + Ch(0, 2) + Ch(1, 2))
