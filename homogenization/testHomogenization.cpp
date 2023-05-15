@@ -209,7 +209,7 @@ void testHomogenization(cfg::HomoConfig config) {
 		//hom.getGrid()->readDensity("temp.vdb", VoxelIOFormat::openVDB);
 		//hom.getGrid()->reset_density(0.5);
 		hom.mg_->updateStencils();
-		hom.getGrid()->useFchar(1);
+		hom.getGrid()->useFchar(4);
 		hom.mg_->test_v_cycle();
 	}
 	else if (config.testname == "pcg") {
