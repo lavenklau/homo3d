@@ -212,6 +212,13 @@ void testHomogenization(cfg::HomoConfig config) {
 		hom.getGrid()->useFchar(1);
 		hom.mg_->test_v_cycle();
 	}
+	else if (config.testname == "pcg") {
+		Homogenization hom(config);
+		hom.getGrid()->randDensity();
+		hom.mg_->updateStencils();
+		hom.getGrid()->useFchar(4);
+		hom.mg_->pcg(config.femRelThres);
+	}
 	else if (config.testname == "testgs") {
 		Homogenization hom(config);
 		//hom.getGrid()->reset_density(1);

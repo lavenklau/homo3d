@@ -219,7 +219,7 @@ double homo::MG::solveEquation(double tol /*= 1e-2*/, bool with_guess /*= true*/
 	return rel_res;
 }
 
-double homo::MG::pcg(void)
+double homo::MG::pcg(double tol /*= 1e-2*/, bool with_guess /*= true*/)
 {
 	double* r[3], * z[3], * x[3], * p[3], * Ap[3];
 	//grids[0]->v3_create(r);
@@ -285,7 +285,7 @@ double homo::MG::pcg(void)
 	std::vector<double> errlist;
 
 	int itn = 0;
-	while (itn++ < 1000 && rel_res>1e-11) {
+	while (itn++ < 1000 && rel_res > tol) {
 		compute_Ap(p, Ap);
 
 		//grids[0]->v3_toMatlab("p", p);
@@ -294,7 +294,7 @@ double homo::MG::pcg(void)
 
 		alpha = zTr_last / pAp;
 
-		//printf("zTr = %e  pAp = %e  alpha = %e\n", zTr_last, pAp, alpha);
+		printf("zTr = %e  pAp = %e  alpha = %e\n", zTr_last, pAp, alpha);
 
 		// update x
 		grids[0]->v3_linear(1, x, alpha, p, x);

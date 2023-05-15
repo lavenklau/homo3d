@@ -32,7 +32,7 @@ struct MG{
 
 	double solveEquation(double tol = 1e-2, bool with_guess = true);
 
-	double pcg(void);
+	double pcg(double tol = 1e-2, bool with_guess = true);
 
 	void updateStencils(void);
 
