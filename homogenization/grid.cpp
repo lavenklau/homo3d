@@ -405,7 +405,7 @@ void homo::Grid::assembleHostMatrix(void)
 #else
 	Eigen::Matrix<double, -1, -1> fk(Khost);
 	Eigen::FullPivLU<Eigen::Matrix<double, -1, -1>> dec;
-	dec.setThreshold(5e-4);
+	dec.setThreshold(5e-2);
 	dec.compute(fk);
 	transBase = dec.kernel();
 #endif
