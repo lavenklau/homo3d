@@ -32,7 +32,7 @@ DECLARE_bool(usesym);
 #define b2s(boolValue) (boolValue?"Yes":"No")
 
 namespace cfg {
-	enum class Objective : uint8_t { bulk, shear, npr, custom };
+	enum class Objective : uint8_t { bulk, shear, npr, npr2, custom };
 	enum class Symmetry : uint8_t { reflect3, reflect6, rotate3, NONE };
 	enum class InitWay : uint8_t { random, randcenter, noise, manual, interp, rep_randcenter, P, G, D, IWP };
 

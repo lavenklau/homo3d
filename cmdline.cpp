@@ -49,6 +49,9 @@ void cfg::HomoConfig::parse(int argc, char** argv)
 	else if (FLAGS_obj == "npr") {
 		obj = Objective::npr;
 	}
+	else if(FLAGS_obj=="npr2") {
+		obj = Objective::npr2;
+	}
 	else if (FLAGS_obj == "custom") {
 		obj = Objective::custom;
 	}

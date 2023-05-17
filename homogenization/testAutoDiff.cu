@@ -441,60 +441,59 @@ void optiNpr(cfg::HomoConfig config, var_tsexp_t<>& rho, Homogenization& hom, el
 	Ch.writeTo(getPath("C"));
 }
 
-void optiNpr2(cfg::HomoConfig config) {
-	// set output prefix
-	setPathPrefix(config.outprefix);
-	// create homogenization domain
-	Homogenization hom(config);
-	// update config resolution
-	for (int i = 0; i < 3; i++) config.reso[i] = hom.getGrid()->cellReso[i];
-	// number of elements
-	int ne = config.reso[0] * config.reso[1] * config.reso[2];
-	// define density expression
-	var_tsexp_t<> rho(config.reso[0], config.reso[1], config.reso[2]);
-	// initialize density
-	initDensity(rho, config);
-	// output initial density
-	rho.value().toVdb(getPath("initRho"));
-	// rho physic
-	auto rhop = rho.conv(radial_convker_t<float, Spline4>(config.filterRadius)).pow(3);
-	// create elastic tensor expression
-	elastic_tensor_t<float, decltype(rhop)> Ch(hom, rhop);
+template<typename Scalar, typename RhoPhys>
+void optiNpr2(cfg::HomoConfig config, var_tsexp_t<>& rho, Homogenization& hom, elastic_tensor_t<Scalar, RhoPhys>& Ch) {
+	int ne = rho.value().size();
+	int ereso[3] = { rho.value().size(0),rho.value().size(1),rho.value().size(2) };
+	int reso = ereso[0];
+	// create a oc optimizer
+	OCOptimizer oc(ne, 0.001, config.designStep, config.dampRatio);
 	// record objective value
 	std::vector<double> objlist;
-	// mma optimizer
-	MMAOptimizer mma(1, ne, 1, 0, 1000, 1);
-	mma.setBound(0.001, 1);
 	// convergence criteria
 	ConvergeChecker criteria(config.finthres);
+	// main loop of optimization
 	for (int iter = 0; iter < config.max_iter; iter++) {
-		printf("\033[32m*   iter %d\033[0m\n", iter);
+		// abort when cuda error occurs
+		AbortErr();
+		// define objective expression
+		float beta = 0.6; // for relaxed poission ratio objective
 #if 0
-		auto objective = Ch(0, 1) + Ch(0, 2) + Ch(1, 2);
-#else
-		auto objective = ((Ch(0, 1) + Ch(0, 2) + Ch(1, 2))
-			/ (Ch(0, 0) + Ch(1, 1) + Ch(2, 2)) * 0.6f + 1).log();
+		// if (iter > 20) beta = 0.1;
+		auto objective = Ch(0, 1) + Ch(0, 2) + Ch(1, 2) -
+						 (Ch(0, 0) + Ch(1, 1) + Ch(2, 2)) * powf(beta, iter);
+#elif 1
+		//auto objective = ((Ch(0, 1) + Ch(0, 2) + Ch(1, 2))
+		//	/ (Ch(0, 0) + Ch(1, 1) + Ch(2, 2)) * beta + 1).log() - (Ch(0, 0) + Ch(1, 1) + Ch(2, 2)).pow(0.5f) * 1e-3f;
+		auto objective = ((Ch(0, 1) + Ch(0, 2) + Ch(1, 2)) / (Ch(0, 0) + Ch(1, 1) + Ch(2, 2)) * beta + 1).log() 
+		- (Ch(0, 0) + Ch(1, 1) + Ch(2, 2)).pow(0.5f) * (1 / powf(FLAGS_E, 0.5f));
+#elif 0
+		auto objective = Ch(0, 1) + Ch(0, 2) + Ch(1, 2) -
+			(Ch(0, 0) + Ch(1, 1) + Ch(2, 2)).pow(0.5f); // Shear modulus
 #endif
 		float val = objective.eval();
+		// record objective value
+		objlist.emplace_back(val);
+		// compute derivative
 		objective.backward(1);
+		// output to screen
+		printf("\033[32m\n * Iter %d   obj = %.4e\033[0m\n", iter, val);
+		// check convergence
+		if (criteria.is_converge(iter, val)) { printf("= converged\n"); break; }
+		// make sensitivity symmetry
 		symmetrizeField(rho.diff(), config.sym);
-		auto objdiff = rho.diff().flatten();
-		Ch.holdOn();
-		auto constrain = -(Ch(0, 0) + Ch(1, 1) + Ch(2, 2)) * 1e-4;
-		auto gval = getTempPool().getUnifiedBlock<float>();
-		gval.rdata<float>() = 4 + constrain.eval();
-		constrain.backward(1);
-		symmetrizeField(rho.diff(), config.sym);
-		auto constraindiff = rho.diff().flatten();
-		Ch.holdOff();
-		auto rhoArray = rho.value().flatten();
-		float* dgdx = constraindiff.data();
-		printf("obj = %f    gval = %f\n", val, gval.rdata<float>());
-		mma.update(iter, rhoArray.data(), objdiff.data(), gval.data<float>(), &dgdx);
-		rho.rvalue().graft(rhoArray.data());
+		// flatten the density and sensitivity tensor to array
+		auto sens = rho.diff().flatten();
+		auto rhoarray = rho.value().flatten();
+		// filtering the sensitivity
+		oc.filterSens(sens.data(), rhoarray.data(), reso, ereso, config.filterRadius);
+		// update density
+		oc.update(sens.data(), rhoarray.data(), config.volRatio);
+		// graft array to tensor
+		rho.rvalue().graft(rhoarray.data());
+		// make density symmetry
 		symmetrizeField(rho.value(), config.sym);
 		// output temp results
-		auto sens = rho.diff().flatten();
 		logIter(iter, config, rho, sens, Ch, val);
 	}
 	//rhop.value().toMatlab("rhofinal");
@@ -502,7 +501,7 @@ void optiNpr2(cfg::HomoConfig config) {
 	hom.grid->array2matlab("objlist", objlist.data(), objlist.size());
 	rho.value().toVdb(getPath("rho"));
 	Ch.writeTo(getPath("C"));
-	freeMem();
+
 }
 
 //template<typename Scalar, typename RhoPhys>
@@ -601,6 +600,9 @@ void runInstance(cfg::HomoConfig config) {
 	}
 	else if (config.obj == cfg::Objective::npr) {
 		optiNpr(config, rho, hom, Ch);
+	}
+	else if(config.obj == cfg::Objective::npr2) {
+		optiNpr2(config, rho, hom, Ch);
 	}
 
 	freeMem();
