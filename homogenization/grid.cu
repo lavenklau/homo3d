@@ -2661,6 +2661,9 @@ void homo::Grid::lexiStencil2gsorder(void)
 //	}
 //}
 
+template <typename T, int N>
+void pad_vertex_data_imp(T **v, std::array<int, 3> cellReso, VertexFlags* vertflag);
+
 void homo::Grid::enforce_period_stencil(bool additive)
 {
 	useGrid_g();
@@ -2681,8 +2684,12 @@ void homo::Grid::enforce_period_stencil(bool additive)
 #else
 	for (int i = 0; i < 27; i++) {
 		enforce_period_vertex(stencil_g[i], additive);
-		pad_vertex_data(stencil_g[i]);
 	}
+
+	if(fine->is_root) {
+		restrict_stencil_arround_dirichelt_boundary();
+	}
+	pad_vertex_data_imp<glm::mat3, 27>(stencil_g, cellReso, vertflag);
 #endif
 }
 
