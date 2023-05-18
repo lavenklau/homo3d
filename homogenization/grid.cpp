@@ -215,7 +215,7 @@ size_t Grid::allocateBuffer(int nv, int ne)
 			// }
 			stencil_g[i]= getMem().addBuffer(homoutils::formated("%s_st_%d", getName().c_str(), i), nv * sizeof(glm::hmat3))->data<glm::hmat3>();
 		}
-		total += nv * sizeof(half) * 27 * 9;
+		total += nv * sizeof(glm::hmat3) * 27;
 	}
 	// allocate characteristic buffer
 	/*for (int i = 0; i < 6; i++) */{
@@ -244,7 +244,7 @@ size_t Grid::allocateBuffer(int nv, int ne)
 		}
 	}
 
-	total += nv * sizeof(float) * 3;
+	// total += nv * sizeof(float) * 3;
 	// allocate flag buffer
 	vertflag = getMem().addBuffer<VertexFlags>(homoutils::formated("%s_vflag", getName().c_str()), nv)->data<VertexFlags>();
 	cellflag = getMem().addBuffer<CellFlags>(homoutils::formated("%s_cflag", getName().c_str()), ne)->data<CellFlags>();
