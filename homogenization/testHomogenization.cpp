@@ -108,7 +108,7 @@ void batchForwardMeasure(cfg::HomoConfig config) {
 
 			hom.logger() << "reading file " << entry.path() << std::endl;
 			hom.getGrid()->readDensity(entry.path().string(), VoxelIOFormat::openVDB);
-			double c = hom.getGrid()->projectDensityToVolume(volRatio, 40);
+			double c = hom.getGrid()->projectDensityToVolume(volRatio, FLAGS_project);
 			auto ereso = hom.getGrid()->cellReso;
 			double vol = hom.getGrid()->sumDensity() / (ereso[0] * ereso[1] * ereso[2]);
 			hom.logger() << "vol = " << vol << ", c = " << c << std::endl;

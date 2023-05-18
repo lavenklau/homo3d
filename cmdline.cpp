@@ -24,6 +24,7 @@ DEFINE_double(step, 0.05, "design step for oc");
 DEFINE_double(damp, 0.5, "damp ratio for oc");
 DEFINE_double(relthres, 0.01, "relative residual threshold for FEM");
 DEFINE_int32(maxcoarsereso, 64, "maximal resolution of coarse grid");
+DEFINE_double(project, 40, "strength for project function");
 
 void cfg::HomoConfig::parse(int argc, char** argv)
 {

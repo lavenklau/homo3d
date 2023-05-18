@@ -26,6 +26,7 @@ DECLARE_double(step);
 DECLARE_double(damp);
 DECLARE_double(relthres);
 DECLARE_int32(maxcoarsereso);
+DECLARE_double(project);
 
 
 #define b2s(boolValue) (boolValue?"Yes":"No")
