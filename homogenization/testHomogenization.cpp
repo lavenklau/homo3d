@@ -295,6 +295,14 @@ void testHomogenization(cfg::HomoConfig config) {
 		Homogenization hom(config);
 		size_t memuse = getMem().size("<H.*_st.*");
 		std::cout << "= memory usage for stencil = " << memuse / 1024 / 1024 << " MB" << std::endl;
+		memuse = getMem().size("<H.*_[ufr]_.*");
+		std::cout << "= memory usage for ufr = " << memuse / 1024 / 1024 << " MB" << std::endl;
+		memuse = getMem().size("<H.*vflag");
+		std::cout << "= memory usage for vertex flag = " << memuse / 1024 / 1024 << " MB" << std::endl;
+		memuse = getMem().size("<H.*cflag");
+		std::cout << "= memory usage for element flag = " << memuse / 1024 / 1024 << " MB" << std::endl;
+		memuse = getMem().size("<H.*_rho");
+		std::cout << "= memory usage for rho = " << memuse / 1024 / 1024 << " MB" << std::endl;
 		memuse = getMem().size(".*uchost.*");
 		std::cout << "= memory usage for uchost  = " << memuse / 1024 / 1024 << " MB" << std::endl;
 		memuse = getMem().size();
