@@ -251,8 +251,10 @@ size_t Grid::allocateBuffer(int nv, int ne)
 	total += nv * sizeof(VertexFlags);
 	total += ne * sizeof(CellFlags);
 	// allocate element buffer
-	rho_g = getMem().addBuffer(homoutils::formated("%s_rho", getName().c_str()), ne * sizeof(float))->data<float>();
-	total += ne * sizeof(float);
+	if(is_root){
+		total += ne * sizeof(float);
+		rho_g = getMem().addBuffer(homoutils::formated("%s_rho", getName().c_str()), ne * sizeof(float))->data<float>();
+	}
 
 	printf("%s allocated %zd MB GPU memory\n", getName().c_str(), total / 1024 / 1024);
 
