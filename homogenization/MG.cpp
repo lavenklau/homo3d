@@ -192,6 +192,7 @@ double homo::MG::solveEquation(double tol /*= 1e-2*/, bool with_guess /*= true*/
 		printf("rel_res = %4.2lf%%    It.%d       \r", rel_res * 100, iter);
 	}
 	printf("\n");
+	if (iter >= 200) { printf(" - r_rel = %le\n",rel_res); }
 	//grids[0]->v3_destroy(u0);
 	//grids[0]->v3_destroy(ftmp);
 	grids[0]->array2matlab("errs", errlist.data(), errlist.size());
