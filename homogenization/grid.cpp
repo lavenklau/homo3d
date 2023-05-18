@@ -1308,10 +1308,8 @@ void homo::Grid::restrict_stencil_arround_dirichelt_boundary(void) {
 							vop[2] * (cellReso[0] + 1) * (cellReso[1] + 1),
 						true);
 					for (int i = 0; i < 27; i++) {
-						for (int j = 0; j < 9; j++) {
-							auto sten = DevicePtr(stencil_g[i][j]);
-							sten[vi_period_id] = st[i][j % 3][j / 3];
-						}
+						auto sten = DevicePtr(stencil_g[i]);
+						sten[vi_period_id] = st[i];
 					}
 				}
 			}
