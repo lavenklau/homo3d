@@ -472,7 +472,11 @@ void homo::Homogenization::elasticMatrix(double C[6][6])
 		grid->useFchar(i);
 		grid->useUchar(i);
 		grid->translateForce(2, grid->u_g);
-		mg_->solveEquation(config.femRelThres);
+		auto rel = mg_->solveEquation(config.femRelThres);
+		if (rel > config.femRelThres) {
+			logger() << "failed to solve equation, rel = " << rel << std::endl;
+			throw std::runtime_error("failed to solve FEM equation");
+		}
 		grid->setUchar(i, grid->getDisplacement());
 	}
 
