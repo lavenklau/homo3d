@@ -4448,9 +4448,14 @@ double homo::Grid::projectDensityToVolume(float vol, float beta /*= 20*/){
 		auto ker = [=] __device__(int tid) {
 			auto eflag = eflags[tid];
 			float rho = rholist[tid];
+#if 0
 			rho = sigmoid(rho, beta, c);
 			if (rho < 1e-9) rho = 1e-9;
 			if (rho > 1) rho = 1;
+#else
+			if (rho < c) rho = 1e-6;
+			if (rho >= c) rho = 1;
+#endif
 			if (eflag.is_fiction() || eflag.is_period_padding())
 				rho = 0;
 			return rho;
@@ -4463,6 +4468,19 @@ double homo::Grid::projectDensityToVolume(float vol, float beta /*= 20*/){
 		} else if (cur_vol > vol + 0.0001) {
 			c_low = c;
 		} else {
+			size_t grid_size, block_size;
+			make_kernel_param(&grid_size, &block_size, ne_gs, 256);
+			map<<<grid_size, block_size>>>(rholist, ne_gs, ker);
+			cudaDeviceSynchronize();
+			pad_cell_data(rholist);
+			break;
+		}
+		if (iter == 19) {
+			size_t grid_size, block_size;
+			make_kernel_param(&grid_size, &block_size, ne_gs, 256);
+			map<<<grid_size, block_size>>>(rholist, ne_gs, ker);
+			cudaDeviceSynchronize();
+			pad_cell_data(rholist);
 			break;
 		}
 	}
