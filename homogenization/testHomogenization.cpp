@@ -213,6 +213,33 @@ void testHomogenization(cfg::HomoConfig config) {
 		hom.getGrid()->useFchar(4);
 		hom.mg_->test_v_cycle();
 	}
+	else if(config.testname == "soaos") {
+		Homogenization hom(config);
+		if(config.inputrho.empty()){
+			hom.getGrid()->randDensity();
+		} else{
+			hom.getGrid()->readDensity(config.inputrho, VoxelIOFormat::openVDB);
+		}
+		hom.mg_->updateStencils();
+		hom.getGrid()->useFchar(4);
+		auto& grids = hom.mg_->grids;
+		grids[0]->update_residual();
+		grids[1]->restrict_residual();
+		_TIC("aos");
+		for (int i = 0; i < 50; i++) {
+			grids[1]->gs_relaxation();
+		}
+		_TOC;
+		auto tb = tictoc::get_record("aos");
+		printf("[aos] time cost %6.2lf ms, average %6.2lf\n", tb, tb / 50);
+		_TIC("soa");
+		for (int i = 0; i < 50; i++) {
+			grids[1]->gs_relaxation_soa();
+		}
+		_TOC;
+		auto ta = tictoc::get_record("soa");
+		printf("[soa] time cost %6.2lf ms, average %6.2lf\n", ta, ta / 50);
+	}
 	else if (config.testname == "testgs") {
 		Homogenization hom(config);
 		//hom.getGrid()->reset_density(1);

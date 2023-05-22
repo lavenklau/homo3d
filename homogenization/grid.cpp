@@ -214,6 +214,9 @@ size_t Grid::allocateBuffer(int nv, int ne)
 			// 	stencil_g[i][j] = getMem().addBuffer(homoutils::formated("%s_st_%d_%d", getName().c_str(), i, j), nv * sizeof(half))->data<half>();
 			// }
 			stencil_g[i]= getMem().addBuffer(homoutils::formated("%s_st_%d", getName().c_str(), i), nv * sizeof(glm::hmat3))->data<glm::hmat3>();
+			for (int j = 0; j < 9; j++) {
+				stencil_g_soa[i][j] = getMem().addBuffer(homoutils::formated("%s_stsoa_%d_%d", getName().c_str(), i, j), nv * sizeof(half))->data<half>();
+			}
 		}
 		total += nv * sizeof(glm::hmat3) * 27;
 	}

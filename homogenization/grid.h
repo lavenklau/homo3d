@@ -124,6 +124,7 @@ struct Grid {
 	std::array<int, 3> cellReso;
 
 	glm::hmat3* stencil_g[27];
+	half* stencil_g_soa[27][9];
 	using StencilT = glm::hmat3;
 
 	using VT = float; 
@@ -229,6 +230,8 @@ struct Grid {
 	void assembleHostMatrix(void);
 
 	void gs_relaxation(float w_SOR = 1.f, int times_ = 1);
+
+	void gs_relaxation_soa();
 
 	void gs_relaxation_ex(float w_SOR = 1.f);
 
@@ -371,6 +374,8 @@ struct Grid {
 
 	void stencil2matlab(const std::string& name, bool removePeriodDof = true);
 	void lexistencil2matlab(const std::string& name);
+
+	void stencil2soa(void);
 
 	Eigen::SparseMatrix<double> stencil2matrix(bool removePeriodDof = true);
 

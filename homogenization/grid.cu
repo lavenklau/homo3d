@@ -33,6 +33,7 @@ __constant__ float gKELame[24][24];
 __constant__ float gKEMu[24][24];
 //__constant__ float* rxstencil[27][9];
 __constant__ glm::hmat3* rxstencil[27];
+__constant__ half* rxstencil_soa[27][9];
 //__constant__ float* rxCoarseStencil[27][9];
 __constant__ glm::hmat3* rxCoarseStencil[27];
 //__constant__ float* rxFineStencil[27][9];
@@ -128,6 +129,7 @@ void homo::Grid::useGrid_g(void)
 		cudaMemcpyToSymbol(gGsCoarseCellReso, Coarse->gsCellReso, sizeof(gGsCoarseCellReso));
 	}
 	cudaMemcpyToSymbol(rxstencil, stencil_g, sizeof(rxstencil));
+	cudaMemcpyToSymbol(rxstencil_soa, stencil_g_soa, sizeof(rxstencil_soa));
 	cudaMemcpyToSymbol(gGridCellReso, cellReso.data(), sizeof(gGridCellReso));
 	cudaMemcpyToSymbol(gGsVertexEnd, gsVertexSetEnd, sizeof(gGsVertexEnd));
 	cudaMemcpyToSymbol(gGsCellEnd, gsCellSetEnd, sizeof(gGsCellEnd));
@@ -605,7 +607,13 @@ __global__ void gs_relaxation_kernel(
 					}
 				}
 				#else
+				auto st = rxstencil[vneigh][vid];
 				Au += glm::mat3(rxstencil[vneigh][vid]) * u;
+				for (int j = 0; j < 3; j++) {
+					for (int k = 0; k < 3; k++) {
+						Au[j] += float(st[k][j]) * u[k];
+					}
+				}
 				#endif
 			}
 		}
@@ -659,7 +667,7 @@ __global__ void gs_relaxation_kernel(
 		if (!vflag.is_period_padding()) {
 			VT u[3] = { gU[0][vid], gU[1][vid], gU[2][vid] };
 			// glm::hmat3 st = rxstencil[13][vid];
-			glm::mat3 st = rxstencil[13][vid];
+			glm::hmat3 st = rxstencil[13][vid];
 #if !USING_SOR
 			u[0] = (gF[0][vid] - Au[0] - rxstencil[13][1][vid] * u[1] - rxstencil[13][2][vid] * u[2]) / rxstencil[13][0][vid];
 			u[1] = (gF[1][vid] - Au[1] - rxstencil[13][3][vid] * u[0] - rxstencil[13][5][vid] * u[2]) / rxstencil[13][4][vid];
@@ -669,9 +677,9 @@ __global__ void gs_relaxation_kernel(
 			// u[0] = w * (f[0] - half(Au[0]) - rxstencil[13][1][vid] * u[1] - rxstencil[13][2][vid] * u[2]) / rxstencil[13][0][vid] + (half(1) - w) * u[0];
 			// u[1] = w * (f[1] - half(Au[1]) - rxstencil[13][3][vid] * u[0] - rxstencil[13][5][vid] * u[2]) / rxstencil[13][4][vid] + (half(1) - w) * u[1];
 			// u[2] = w * (f[2] - half(Au[2]) - rxstencil[13][6][vid] * u[0] - rxstencil[13][7][vid] * u[1]) / rxstencil[13][8][vid] + (half(1) - w) * u[2];
-			u[0] = w * (f[0] - VT(Au[0]) - st[1][0] * u[1] - st[2][0] * u[2]) / st[0][0] + (VT(1) - w) * u[0];
-			u[1] = w * (f[1] - VT(Au[1]) - st[0][1] * u[0] - st[2][1] * u[2]) / st[1][1] + (VT(1) - w) * u[1];
-			u[2] = w * (f[2] - VT(Au[2]) - st[0][2] * u[0] - st[1][2] * u[1]) / st[2][2] + (VT(1) - w) * u[2];
+			u[0] = w * (f[0] - VT(Au[0]) - float(st[1][0]) * u[1] - float(st[2][0]) * u[2]) / float(st[0][0]) + (VT(1) - w) * u[0];
+			u[1] = w * (f[1] - VT(Au[1]) - float(st[0][1]) * u[0] - float(st[2][1]) * u[2]) / float(st[1][1]) + (VT(1) - w) * u[1];
+			u[2] = w * (f[2] - VT(Au[2]) - float(st[0][2]) * u[0] - float(st[1][2]) * u[1]) / float(st[2][2]) + (VT(1) - w) * u[2];
 #endif
 
 			//if (rxstencil[13][0][vid] == 0) {
@@ -2436,6 +2444,191 @@ void homo::Grid::restrict_stencil(void)
 		//stencil2matlab("Khost");
 		enforce_period_stencil(false);
 	}
+	stencil2soa();
+}
+
+// map 32 vertices to 13 warp
+template<int BlockSize = 32 * 13>
+__global__ void gs_relaxation_kernel_soa(	
+	int gs_set,
+	VertexFlags* vflags,
+	// SOR relaxing factor
+	VT w = 1.f
+) {
+	__shared__ float sumAu[3][7][32];
+	__shared__ int gsVertexEnd[8];
+	__shared__ int gsVertexReso[3][8];
+
+	constantToShared(gGsVertexEnd, gsVertexEnd);
+	constant2DToShared(gGsVertexReso, gsVertexReso);
+	initSharedMem(&sumAu[0][0][0], sizeof(sumAu) / sizeof(float));
+	__syncthreads();
+
+	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+	int warpId = threadIdx.x / 32;
+	int laneId = threadIdx.x % 32;
+	
+	// local vertex id in gs set
+	int vid = blockIdx.x * 32 + laneId;
+	// global vertex id
+	vid = gs_set == 0 ? vid : gsVertexEnd[gs_set - 1] + vid;
+
+	bool fiction = false;
+	if (vid >= gsVertexEnd[gs_set]) fiction = true;
+	VertexFlags vflag;
+	if (!fiction) vflag = vflags[vid];
+	fiction = fiction || vflag.is_fiction();
+
+	GridVertexIndex indexer(gGridCellReso[0], gGridCellReso[1], gGridCellReso[2]);
+
+	glm::vec<3, float> Au(0.);
+
+	if (!fiction && !vflag.is_period_padding()) {
+		indexer.locate(vid, vflag.get_gscolor(), gsVertexEnd);
+
+		for (int noff : {0, 14}) {
+			int vneigh = warpId + noff;
+			int neighId = indexer.neighVertex(vneigh, gsVertexEnd, gsVertexReso).getId();
+			if (neighId == -1) continue;
+			VertexFlags neiflag = vflags[neighId];
+			if (!neiflag.is_fiction()) {
+				glm::vec<3, float> u(gU[0][neighId], gU[1][neighId], gU[2][neighId]);
+				for (int j = 0; j < 3; j++) {
+					for (int k = 0; k < 3; k++) {
+						Au[j] += float(rxstencil_soa[vneigh][j * 3 + k][vid]) * u[k];
+					}
+				}
+			}
+		}
+	}
+
+
+	if (warpId >= 7) {
+		for (int i = 0; i < 3; i++) {
+			sumAu[i][warpId - 7][laneId] = Au[i];
+		}
+	}
+	__syncthreads();
+
+	if (warpId < 7) {
+		if (warpId < 6) {
+			for (int i = 0; i < 3; i++) {
+				sumAu[i][warpId][laneId] += Au[i];
+			}
+		} else {
+			for (int i = 0; i < 3; i++) {
+				sumAu[i][6][laneId] = Au[i];
+			}
+		}
+	}
+	__syncthreads();
+
+	if (warpId < 3) {
+		for (int i = 0; i < 3; i++) {
+			sumAu[i][warpId][laneId] += sumAu[i][warpId + 4][laneId];
+		}
+	}
+	__syncthreads();
+
+	if (warpId < 2) {
+		for (int i = 0; i < 3; i++) {
+			sumAu[i][warpId][laneId] += sumAu[i][warpId + 2][laneId];
+		}
+	}
+	__syncthreads();
+
+	if (warpId < 1 && !fiction) {
+		for (int i = 0; i < 3; i++) {
+			Au[i] = sumAu[i][warpId][laneId] + sumAu[i][warpId + 1][laneId];
+		}
+
+		//if (vflag.is_dirichlet_boundary()) {
+		//	gU[0][vid] = 0; gU[1][vid] = 0; gU[2][vid] = 0;
+		//	return;
+		//}
+
+		if (!vflag.is_period_padding()) {
+			VT u[3] = { gU[0][vid], gU[1][vid], gU[2][vid] };
+			// glm::hmat3 st = rxstencil[13][vid];
+			// glm::mat3 st = rxstencil[13][vid];
+#if !USING_SOR
+			u[0] = (gF[0][vid] - Au[0] - rxstencil[13][1][vid] * u[1] - rxstencil[13][2][vid] * u[2]) / rxstencil[13][0][vid];
+			u[1] = (gF[1][vid] - Au[1] - rxstencil[13][3][vid] * u[0] - rxstencil[13][5][vid] * u[2]) / rxstencil[13][4][vid];
+			u[2] = (gF[2][vid] - Au[2] - rxstencil[13][6][vid] * u[0] - rxstencil[13][7][vid] * u[1]) / rxstencil[13][8][vid];
+#else
+			VT f[3] = {gF[0][vid], gF[1][vid], gF[2][vid]};
+			u[0] = w * (f[0] - float(Au[0]) - float(rxstencil_soa[13][1][vid]) * u[1] - float(rxstencil_soa[13][2][vid]) * u[2]) / float(rxstencil_soa[13][0][vid]) + (1.f - w) * u[0];
+			u[1] = w * (f[1] - float(Au[1]) - float(rxstencil_soa[13][3][vid]) * u[0] - float(rxstencil_soa[13][5][vid]) * u[2]) / float(rxstencil_soa[13][4][vid]) + (1.f - w) * u[1];
+			u[2] = w * (f[2] - float(Au[2]) - float(rxstencil_soa[13][6][vid]) * u[0] - float(rxstencil_soa[13][7][vid]) * u[1]) / float(rxstencil_soa[13][8][vid]) + (1.f - w) * u[2];
+			// u[0] = w * (f[0] - VT(Au[0]) - st[1][0] * u[1] - st[2][0] * u[2]) / st[0][0] + (VT(1) - w) * u[0];
+			// u[1] = w * (f[1] - VT(Au[1]) - st[0][1] * u[0] - st[2][1] * u[2]) / st[1][1] + (VT(1) - w) * u[1];
+			// u[2] = w * (f[2] - VT(Au[2]) - st[0][2] * u[0] - st[1][2] * u[1]) / st[2][2] + (VT(1) - w) * u[2];
+#endif
+
+			//if (rxstencil[13][0][vid] == 0) {
+			//	short3 pos = indexer.getPos();
+			//	printf("pos = (%d, %d, %d) d = (%e %e %e)\n",
+			//		pos.x - 1, pos.y - 1, pos.z - 1,
+			//		rxstencil[13][0][vid], rxstencil[13][4][vid], rxstencil[13][8][vid]);
+			//}
+
+			gU[0][vid] = u[0];
+			gU[1][vid] = u[1];
+			gU[2][vid] = u[2];
+		}
+	}
+}
+
+void homo::Grid::gs_relaxation_soa() {
+	int times_ = 1;
+	AbortErr();
+	// change to 8 bytes bank
+	use8Bytesbank();
+	useGrid_g();
+	devArray_t<int, 3> gridCellReso{};
+	devArray_t<int, 8> gsCellEnd{};
+	devArray_t<int, 8> gsVertexEnd{};
+	for (int i = 0; i < 8; i++)
+	{
+		gsCellEnd[i] = gsCellSetEnd[i];
+		gsVertexEnd[i] = gsVertexSetEnd[i];
+		if (i < 3)
+			gridCellReso[i] = cellReso[i];
+	}
+	for (int itn = 0; itn < times_; itn++)
+	{
+		for (int i = 0; i < 8; i++)
+		{
+			int set_id = i;
+			size_t grid_size, block_size;
+			int n_gs = gsVertexEnd[set_id] - (set_id == 0 ? 0 : gsVertexEnd[set_id - 1]);
+			if (assemb_otf)
+			{
+#if 1
+				make_kernel_param(&grid_size, &block_size, n_gs * 8, 32 * 8);
+				gs_relaxation_otf_kernel<<<grid_size, block_size>>>(set_id, rho_g, gridCellReso, vertflag, cellflag, 1.f, diag_strength);
+#elif 1
+				make_kernel_param(&grid_size, &block_size, n_gs * 8, 32 * 8);
+				gs_relaxation_otf_kernel_opt<<<grid_size, block_size>>>(i, rho_g, gridCellReso, vertflag, cellflag, w_SOR);
+#else
+				make_kernel_param(&grid_size, &block_size, n_gs * 16, 32 * 16);
+				gs_relaxation_otf_kernel_test_512<<<grid_size, block_size>>>(i, rho_g, gridCellReso, vertflag, cellflag, w_SOR, diag_strength);
+#endif
+			}
+			else
+			{
+				make_kernel_param(&grid_size, &block_size, n_gs * 13, 32 * 13);
+				gs_relaxation_kernel_soa<<<grid_size, block_size>>>(set_id, vertflag, 1.f);
+			}
+			cudaDeviceSynchronize();
+			cuda_error_check;
+			enforce_period_boundary(u_g);
+		}
+	}
+	enforce_period_boundary(u_g);
+	// pad_vertex_data(u_g);
+	cudaDeviceSynchronize();
+	cuda_error_check;
 }
 
 void homo::Grid::reset_density(float rho)
@@ -4439,4 +4632,37 @@ void homo::Grid::checkPeriodStencil() {
 		glm::hmat3 *st[1] = {stencil_g[i]};
 		checkPeriodVertex_imp<glm::hmat3, 1>(n_gsvertices(), vertflag, st);
 	}
+}
+
+__global__ void stencil2soa_kernel(
+	int nv,
+	devArray_t<glm::hmat3 *, 27> st_aos,
+	 devArray_t<devArray_t<half *, 9>, 27> st_soa) {
+	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+	if (tid >= nv)
+		return;
+	for (int i = 0; i < 27; i++) {
+		auto st = st_aos[i][tid];
+		for (int j = 0 ; j<9;j++){
+			st_soa[i][j][tid] = st[j % 3][j / 3];
+		}
+	}
+}
+
+void homo::Grid::stencil2soa(void) {
+	int nv = n_gsvertices();
+	size_t grid_size,block_size;
+	devArray_t<devArray_t<half *, 9>, 27> st_soa;
+	devArray_t<glm::hmat3 *, 27> st_aos;
+	for (int i = 0; i < 27; i++) {
+		st_aos[i] = stencil_g[i];
+		for (int j = 0; j < 9; j++) {
+			st_soa[i][j] = stencil_g_soa[i][j];
+			cudaMemset(st_soa[i][j], 0, sizeof(st_soa[0][0][0]) * nv);
+		}
+	}
+	make_kernel_param(&grid_size, &block_size, nv, 256);
+	stencil2soa_kernel<<<grid_size, block_size>>>(nv, st_aos, st_soa);
+	cudaDeviceSynchronize();
+	cuda_error_check;
 }
