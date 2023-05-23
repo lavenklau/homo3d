@@ -377,6 +377,8 @@ struct Grid {
 
 	void stencil2soa(void);
 
+	void test_aos_soa_stencil_restriction(int aos1soa2);
+
 	Eigen::SparseMatrix<double> stencil2matrix(bool removePeriodDof = true);
 
 	int vgsid2lexid_h(int gsid, bool removePeriodDof = false);

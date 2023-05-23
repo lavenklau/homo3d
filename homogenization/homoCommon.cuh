@@ -40,6 +40,7 @@ extern __constant__ double gLM[5];
 extern __constant__ glm::hmat3* rxstencil[27];
 extern __constant__ glm::hmat3* rxCoarseStencil[27];
 extern __constant__ glm::hmat3* rxFineStencil[27];
+extern __constant__ half* rxstencil_soa[27][9];
 
 extern __constant__ int gUpCoarse[3];
 extern __constant__ int gDownCoarse[3];

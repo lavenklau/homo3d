@@ -231,14 +231,28 @@ void testHomogenization(cfg::HomoConfig config) {
 		}
 		_TOC;
 		auto tb = tictoc::get_record("aos");
-		printf("[aos] time cost %6.2lf ms, average %6.2lf\n", tb, tb / 50);
+		printf("[aos] relax time cost %6.2lf ms, average %6.2lf\n", tb, tb / 50);
 		_TIC("soa");
 		for (int i = 0; i < 50; i++) {
 			grids[1]->gs_relaxation_soa();
 		}
 		_TOC;
 		auto ta = tictoc::get_record("soa");
-		printf("[soa] time cost %6.2lf ms, average %6.2lf\n", ta, ta / 50);
+		printf("[soa] relax time cost %6.2lf ms, average %6.2lf\n", ta, ta / 50);
+		_TIC("st-aos");
+		for (int i = 0; i < 50; i++) {
+			grids[1]->test_aos_soa_stencil_restriction(1);
+		}
+		_TOC;
+		auto tc = tictoc::get_record("st-aos");
+		printf("[aos] restrict stencil time cost %6.2lf ms, average %6.2lf ms\n", tc, tc / 50);
+		_TIC("st-soa");
+		for (int i = 0; i < 50; i++) {
+			grids[1]->test_aos_soa_stencil_restriction(2);
+		}
+		_TOC;
+		auto td = tictoc::get_record("st-soa");
+		printf("[soa] restrict stencil time cost %6.2lf ms, average %6.2lf ms\n", td, td / 50);
 	}
 	else if (config.testname == "testgs") {
 		Homogenization hom(config);
