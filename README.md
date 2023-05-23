@@ -53,6 +53,7 @@ If the conda environment is activated, `cmake` will automatically checkout the d
 * `-prefix`: output path suffixed with `/` 
 * `-in`: variable input determined by other options, e.g., a OpenVDB file path when the argument of `-init` is `manual`.
 * `-N`: maximal iteration number, default is `300`.
+* `-relthres`: the relative residual tolerance on FEM equation, default is `1e-2`. (The `master` branch may not work well with tolerance smaller than `1e-5`. Usually, the default value is enough to produce a satisfactory result).
 
 
 
@@ -97,7 +98,17 @@ void runCustom(cfg::HomoConfig config) {
 
 
 
+### Version illustration
 
+If you care more about accuracy rather than performance, please checkout the branch `mix-fp64` and uses a smaller tolerance on  the relative residual of FEM equation:
+
+```bash
+./homo3d -reso 128 -vol 0.1 -relthres 1e-6 # set tolerence to 1e-6
+```
+
+
+
+Other version (branch) such as `mix-fp64fp32` uses a mixed precision scheme and requires less memory.
 
 
 
