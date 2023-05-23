@@ -10,6 +10,18 @@ This project aims to provide an code framework for efficiently solving the inver
 * glm
 * Eigen3
 
+We have packed dependencies into a [conda](https://docs.conda.io/en/latest/miniconda.html) environment (except CUDA  and compilers), you can create it by:
+
+```bash
+conda env create -f environment.yaml
+```
+
+Then you activate it by:
+
+```bash
+conda activate homo3d
+```
+
 
 
 ### Compilation
@@ -22,6 +34,8 @@ cd build
 cmake ..
 make -j4
 ```
+
+If the conda environment is activated, `cmake` will automatically checkout the dependencies in this environment.
 
 
 
