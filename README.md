@@ -1,3 +1,4 @@
+![](https://s2.loli.net/2023/06/13/pIOTzngcB4blmN8.png)
 ## An Optimized, Easy-to-use, Open-source GPU Solver for Large-scale Inverse Homogenization Problems
 
 This project aims to provide an code framework for efficiently solving the inverse homogenization problems to design microstructure.  
