@@ -4,8 +4,15 @@ message(STATUS "cmake version ${CMAKE_VERSION}")
 
 project(homo3d)
 
+set(FETCHCONTENT_QUIET FALSE)
+
+message(STATUS "Using proxy : $ENV{HTTP_PROXY}")
+if(DEFINED ENV{CONDA_PREFIX})
+message("using conda environment, prefix = $ENV{CONDA_PREFIX}")
+set(CMAKE_PREFIX_PATH $ENV{CONDA_PREFIX})
+endif()
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_VERBOSE_MAKEFILE ON)
+#set(CMAKE_VERBOSE_MAKEFILE ON)
 set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set (CMAKE_BUILD_TYPE "Release")
@@ -16,12 +23,31 @@ set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 # disable all warning for clean output
 add_definitions(-w)
 
+include(FetchContent)
+# Fetch OpenVDB 8.2
+FetchContent_Declare(
+  openvdb
+#  GIT_REPOSITORY https://github.com/AcademySoftwareFoundation/openvdb
+#  GIT_TAG        v8.2.0 # release-1.10.0
+  URL https://github.com/AcademySoftwareFoundation/openvdb/archive/refs/tags/v8.2.0.tar.gz
+  URL_HASH MD5=2852fe7176071eaa18ab9ccfad5ec403
+)
+FetchContent_MakeAvailable(openvdb)
+message(STATUS "openvdb_SOURCE_DIR = ${openvdb_SOURCE_DIR} ")
+message(STATUS "openvdb_BINARY_DIR = ${openvdb_BINARY_DIR} ")
 find_package(Eigen3 REQUIRED)
 message(STATUS "Eigen directory ${EIGEN3_INCLUDE_DIRS}")
-find_package(OpenVDB REQUIRED)
-message(STATUS "OpenVDB include dir ${OpenVDB_INCLUDE_DIRS}")
+# find_package(OpenVDB REQUIRED)
+# message(STATUS "OpenVDB include dir ${OpenVDB_INCLUDE_DIRS}")
+# message(STATUS "OpenVDB libraries ${OpenVDB_LIBRARIES}")
 find_package(gflags REQUIRED)
-find_package(glm REQUIRED)
+find_package(glm CONFIG REQUIRED)
+message(STATUS "glm dir = ${GLM_INCLUDE_DIRS}")
+if (NOT TARGET glm::glm)
+message(STATUS "glm::glm alias to glm")
+add_library(glm::glm ALIAS glm)
+endif()
+find_package(IlmBase REQUIRED)
 
 
 include_directories(${EIGEN3_INCLUDE_DIRS})
@@ -75,7 +101,7 @@ message(STATUS "deprecated sources : ${deprefiles}")
 add_library(cubin STATIC ${cudafiles})
 set_target_properties(cubin PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 set_target_properties(cubin PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
-set_target_properties(cubin PROPERTIES CUDA_ARCHITECTURES "52;61;75;86")
+set_target_properties(cubin PROPERTIES CUDA_ARCHITECTURES "61;75;86")
 # set_target_properties(cubin PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_options(cubin PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:
 	--relocatable-device-code=true
@@ -98,14 +124,17 @@ file(GLOB cppfiles
         homogenization/*.cpp
         matlab/*.cpp
         optimization/*.cpp
+        voxelIO/*.cpp
     )
 # file(GLOB cppfiles *.cpp)
 add_executable(homo3d ${cppfiles})
 target_include_directories(homo3d PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
-set_target_properties(homo3d PROPERTIES CUDA_ARCHITECTURES "52;61;75;86")
+set_target_properties(homo3d PROPERTIES CUDA_ARCHITECTURES "61;75;86")
 target_link_libraries(homo3d PRIVATE cubin)
-target_link_libraries(homo3d PRIVATE OpenVDB::openvdb)
-target_link_libraries(homo3d PRIVATE -lHalf)
+# target_link_libraries(homo3d PRIVATE OpenVDB::openvdb)
+target_include_directories(homo3d PUBLIC ${openvdb_SOURCE_DIR}/openvdb/openvdb)
+target_link_libraries(homo3d PRIVATE openvdb_shared)
+target_link_libraries(homo3d PRIVATE IlmBase::Half)
 target_link_libraries(homo3d PRIVATE ${CUDA_LIBRARIES})
 target_link_libraries(homo3d PRIVATE ${CUDA_DRIVER_LIBRARY})
 target_link_libraries(homo3d PRIVATE ${CUDA_curand_LIBRARY})
