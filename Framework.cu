@@ -283,7 +283,7 @@ void example_opti_shear_isotropy(cfg::HomoConfig config) {
 	// output initial density
 	rho.value().toVdb(getPath("initRho"));
 	// define material interpolation term
-	auto rhop = rho.conv(radial_convker_t<float, Spline4>(config.filterRadius)).pow(3);
+	auto rhop = rho.conv(radial_convker_t<float, Spline4>(config.filterRadius)).sgm().pow(3);
 	// create elastic tensor expression
 	auto Ch = genCH(hom, rhop);
 	AbortErr();
@@ -325,13 +325,13 @@ void example_opti_shear_isotropy(cfg::HomoConfig config) {
 		// constrain value
 		auto gval = getTempPool().getUnifiedBlock<float>();
 		float vol_scale = 1000.f;
-		float vol_ratio = rho.value().sum() / ne;
-		gval.proxy<float>()[0] = (vol_ratio - config.volRatio) * vol_scale;
+		auto vol_ratio = rho.conv(radial_convker_t<float, Spline4>(config.filterRadius)).sgm().sum() / ne;
+		gval.proxy<float>()[0] = (vol_ratio.eval() - config.volRatio) * vol_scale;
 		gval.proxy<float>()[1] = anistroy_constrain * aniScale - 0.1f;
+		vol_ratio.backward(1);
 		// constrain derivative
-		auto vol_ones = rho.diff().flatten();
-		vol_ones.reset(vol_scale / ne);
-		float* dgdx[2] = { vol_ones.data(), gGrad.data() };
+		auto vol_grad = rho.diff().flatten();
+		float* dgdx[2] = { vol_grad.data(), gGrad.data() };
 		// design variables
 		auto rhoArray = rho.value().flatten();
 		printf("zener ratio = %4.2e ; obj = %4.2e ; vol = %4.2e\n", zener_ratio, val, vol_ratio);

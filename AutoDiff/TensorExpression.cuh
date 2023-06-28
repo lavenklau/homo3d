@@ -7,6 +7,9 @@
 #include <curand_kernel.h>
 
 namespace homo {
+
+	// enum Order : int;
+	// enum TensorSym : int;
 	//inline int ceilDiv(size_t a, size_t b) {
 	//	size_t c = a / b;
 	//	return a % b ? c + 1 : c;
@@ -362,6 +365,74 @@ namespace homo {
 			}
 		}
 		accs(i, j, k) = diffsum;
+	}
+
+	// please fix block size as 512
+	template <int BlockSize, bool omitPreMap, typename AccS, typename Accd, typename ReduceOp,
+			  std::enable_if_t<(BlockSize == 512), int> >
+	__global__ void tensor_reduce(size_t nsrc, AccS accs, Accd accd, ReduceOp op)
+	{
+		using Scalar = std::remove_reference_t<decltype(accs(0))>;
+		__shared__ Scalar rawSum[BlockSize / 2];
+		size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+		int warpId = threadIdx.x / 32;
+		int laneId = threadIdx.x % 32;
+		bool lastReduce = gridDim.x == 1;
+		// gather data
+		Scalar s = op.Id;
+		if (tid < nsrc)
+		{
+			s = accs(tid);
+			if (!omitPreMap)
+				s = op.preMap(s);
+		}
+		if (threadIdx.x >= BlockSize / 2)
+		{
+			rawSum[threadIdx.x - BlockSize / 2] = s;
+		}
+		__syncthreads();
+		if (threadIdx.x < BlockSize / 2)
+		{
+			rawSum[threadIdx.x] = op.combine(rawSum[threadIdx.x], s);
+		}
+		__syncthreads();
+		if (threadIdx.x < BlockSize / 4)
+		{
+			rawSum[threadIdx.x] = op.combine(rawSum[threadIdx.x + BlockSize / 4], rawSum[threadIdx.x]);
+		}
+		__syncthreads();
+		if (threadIdx.x < BlockSize / 8)
+		{
+			rawSum[threadIdx.x] = op.combine(rawSum[threadIdx.x + BlockSize / 8], rawSum[threadIdx.x]);
+		}
+		__syncthreads();
+		// warp reduce
+		if (warpId < 1) {
+			s = op.combine(rawSum[threadIdx.x], rawSum[threadIdx.x + 32]);
+			for (int offset = 16; offset > 0; offset >>= 1) {
+				s = op.combine(s, shfl_down(s, offset));
+			}
+			if(threadIdx.x == 0){
+				if (lastReduce) {
+					s = op.postMap(s);
+				}
+				accd(blockIdx.x) = s;
+			}
+		}
+	}
+
+	// please fix block size as 512
+	template <int BlockSize, typename Scalar, typename AccS, typename Accd, typename ReduceOp,
+			  std::enable_if_t<(BlockSize == 512), int > >
+	__global__ void tensor_reduce_gradient(AccS accs, Accd grad, Scalar res, Scalar lastdiff, ReduceOp op) {
+		size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+		int warpId = threadIdx.x / 32;
+		int laneId = threadIdx.x % 32;
+		if (tid >= accs.size()) return;
+		grad(tid) = op.diff(res, accs(tid)) * lastdiff;
+		// if(threadIdx.x == 0) {
+		// 	printf("grad = %e, res = %f, src = %f, lastdiff = %f\n",grad(tid), res, accs(tid), lastdiff);
+		// }
 	}
 
 	// map 32 dst elements to 8(x) warps
