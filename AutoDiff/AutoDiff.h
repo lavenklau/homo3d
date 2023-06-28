@@ -162,43 +162,71 @@ namespace homo {
 			return linear_exp_t<typename LinT<std::decay_t<decltype(homostd::get<0>(terms))>>::type, exp_trait_t<Terms>...>(terms);
 		}
 
-		template<typename Scalar>
-		__host_device_func Scalar pow_(Scalar v, Scalar k) {
-			if (std::is_same_v<Scalar, double>) {
-				return pow(v, k);
-			}
-			else {
-				return powf(v, k);
-			}
-		}
+		// template<typename Scalar>
+		// __host_device_func Scalar pow_(Scalar v, Scalar k) {
+		// 	if (std::is_same_v<Scalar, double>) {
+		// 		return pow(v, k);
+		// 	} else {
+		// 		return powf(v, k);
+		// 	}
+		// }
 
-		template<typename Scalar>
-		__host_device_func Scalar exp_(Scalar v) {
-			if (std::is_same_v<Scalar, double>) {
-				return exp(v);
-			}
-			else {
-				return expf(v);
-			}
-		}
+#define float_branch_unary_math_func(funcName)      \
+	template <typename Scalar>                      \
+	__host_device_func Scalar funcName##_(Scalar v) \
+	{                                               \
+		if (std::is_same_v<Scalar, double>)         \
+		{                                           \
+			return funcName(v);                     \
+		}                                           \
+		else                                        \
+		{                                           \
+			return funcName##f(v);                  \
+		}                                           \
+	}
 
-		template<typename Scalar>
-		__host_device_func Scalar log_(Scalar v) {
-			if (std::is_same_v<Scalar, double>) {
-				return log(v);
-			} else {
-				return logf(v);
-			}
-		}
+#define float_branch_binary_math_func(funcName)                \
+	template <typename Scalar>                                 \
+	__host_device_func Scalar funcName##_(Scalar v, Scalar v1) \
+	{                                                          \
+		if (!std::is_same_v<Scalar, float>)                    \
+		{                                                      \
+			return funcName(v, v1);                            \
+		}                                                      \
+		else                                                   \
+		{                                                      \
+			return funcName##f(v, v1);                         \
+		}                                                      \
+	}
 
-		template<typename Scalar>
-		__host_device_func Scalar sqrt_(Scalar v) {
-			if (std::is_same_v<Scalar, double>) {
-				return sqrt(v);
-			} else {
-				return sqrtf(v);
+		float_branch_unary_math_func(exp);
+		float_branch_unary_math_func(log);
+		float_branch_unary_math_func(sin);
+		float_branch_unary_math_func(cos);
+		float_branch_unary_math_func(sinh);
+		float_branch_unary_math_func(cosh);
+		float_branch_unary_math_func(sqrt);
+		float_branch_unary_math_func(acos);
+		float_branch_unary_math_func(asin);
+		float_branch_unary_math_func(acosh);
+		float_branch_unary_math_func(asinh);
+		float_branch_unary_math_func(tan);
+		float_branch_unary_math_func(tanh);
+
+		float_branch_binary_math_func(pow);
+
+		template<typename Scalar,typename Derived>
+		struct binop_func_t {
+			Scalar combine(Scalar v0 , Scalar v1) const {
+				return static_cast<const Derived*>(this)->combine(v0, v1);
 			}
-		}
+			template <int N>
+			std::enable_if_t<(N >= 0) && (N < 1), Scalar> diff(Scalar v0, Scalar v1) const {
+				return static_cast<const Derived*>(this)->template diff<N>(v0, v1);
+			}
+		};
+
+		template<typename Scalar> constexpr Scalar one = 1;
 	}
 	using namespace details;
 
@@ -221,6 +249,132 @@ namespace homo {
 		__host_device_func void backward(Scalar lastdiff) { return; }
 	};
 
+	template<typename Scalar, typename Derived>
+	struct diff_func_t {
+		__host_device_func Scalar operator()(Scalar v) const { return valueAt(v); }
+		__host_device_func Scalar valueAt(Scalar v) const {
+			return static_cast<const Derived*>(this)->valueAt(v);
+		}
+		Scalar diffAt(Scalar v) const {
+			return static_cast<const Derived*>(this)->diffAt(v);
+		}
+	};
+
+
+	template<typename Scalar>
+	struct eye_func_t : diff_func_t<Scalar, eye_func_t<Scalar>> {
+		__host_device_func Scalar valueAt(Scalar v) const { return v; }
+		__host_device_func Scalar diffAt(Scalar v) const { return 1; }
+	};
+
+	template<typename Scalar>
+	struct exp_func_t : diff_func_t<Scalar, exp_func_t<Scalar>> {
+		__host_device_func Scalar valueAt(Scalar v) const { return exp_(v); }
+		__host_device_func Scalar diffAt(Scalar v) const { return exp_(v);}
+	};
+
+	template<typename Scalar>
+	struct sgm_func_t : diff_func_t<Scalar, sgm_func_t<Scalar>> {
+		__host_device_func Scalar valueAt(Scalar v) const { return Scalar(1) / (Scalar(1) + exp_(-v)); }
+		__host_device_func Scalar diffAt(Scalar v) const { Scalar t = exp_(-v); return t / (Scalar(1) + t); }
+	};
+
+	template<typename Scalar>
+	struct log_func_t : diff_func_t<Scalar, log_func_t<Scalar>> {
+		__host_device_func Scalar valueAt(Scalar v) const { return log_(v); }
+		__host_device_func Scalar diffAt(Scalar v) const { return Scalar(1) / v; }
+	};
+
+	template<typename Scalar>
+	struct sin_func_t : diff_func_t<Scalar, sin_func_t<Scalar>> {
+		__host_device_func Scalar valueAt(Scalar v) const { return sin_(v); }
+		__host_device_func Scalar diffAt(Scalar v) const { return cos_(v); }
+	};
+	template<typename Scalar>
+	struct asin_func_t : diff_func_t<Scalar, asin_func_t<Scalar>> {
+		__host_device_func Scalar valueAt(Scalar v) const { return asin_(v); }
+		__host_device_func Scalar diffAt(Scalar v) const { return Scalar(1) / sqrt_(1 - v * v); }
+	};
+
+	template<typename Scalar>
+	struct cos_func_t : diff_func_t<Scalar, cos_func_t<Scalar>> {
+		__host_device_func Scalar valueAt(Scalar v) const { return cos_(v); }
+		__host_device_func Scalar diffAt(Scalar v) const { return -sin_(v); }
+	};
+	template<typename Scalar>
+	struct acos_func_t : diff_func_t<Scalar, acos_func_t<Scalar>> {
+		__host_device_func Scalar valueAt(Scalar v) const { return acos_(v); }
+		__host_device_func Scalar diffAt(Scalar v) const { return -Scalar(1) / sqrt_(1 - v * v); }
+	};
+
+	template<typename Scalar>
+	struct tan_func_t : diff_func_t<Scalar, tan_func_t<Scalar>> {
+		__host_device_func Scalar valueAt(Scalar v) const { return tan_(v); }
+		__host_device_func Scalar diffAt(Scalar v) const { Scalar t = cos_(v); return Scalar(1) / (t * t); }
+	};
+
+	template<typename Scalar>
+	struct atan_func_t : diff_func_t<Scalar, atan_func_t<Scalar>> {
+		__host_device_func Scalar valueAt(Scalar v) const { return atan_(v); }
+		__host_device_func Scalar diffAt(Scalar v) const { return Scalar(1) / sqrt_(1 + v * v); }
+	};
+
+	template<typename Scalar>
+	struct pow_func_t : diff_func_t<Scalar, pow_func_t<Scalar>> {
+		const Scalar p;
+		pow_func_t(Scalar p_) : p(p_){}
+		__host_device_func Scalar valueAt(Scalar v) const { return pow_(v, p); }
+		__host_device_func Scalar diffAt(Scalar v) const { return p * pow_(v, p - 1); }
+	};
+
+	template<typename Scalar, typename DiffFunc>
+	struct inv_func_t { };
+
+	template<typename Scalar> struct inv_func_t<Scalar, eye_func_t<Scalar>> : eye_func_t<Scalar>{ };
+	template<typename Scalar> struct inv_func_t<Scalar, exp_func_t<Scalar>> : log_func_t<Scalar>{ };
+	template<typename Scalar> struct inv_func_t<Scalar, log_func_t<Scalar>> : exp_func_t<Scalar>{ };
+	template<typename Scalar> struct inv_func_t<Scalar, sin_func_t<Scalar>> : asin_func_t<Scalar>{ };
+	template<typename Scalar> struct inv_func_t<Scalar, asin_func_t<Scalar>> : sin_func_t<Scalar>{ };
+	template<typename Scalar> struct inv_func_t<Scalar, cos_func_t<Scalar>> : acos_func_t<Scalar>{ };
+	template<typename Scalar> struct inv_func_t<Scalar, acos_func_t<Scalar>> : cos_func_t<Scalar>{ };
+	template<typename Scalar> struct inv_func_t<Scalar, tan_func_t<Scalar>> : atan_func_t<Scalar>{ };
+	template<typename Scalar> struct inv_func_t<Scalar, atan_func_t<Scalar>> : tan_func_t<Scalar>{ };
+	template<typename Scalar> struct inv_func_t<Scalar, pow_func_t<Scalar>> : pow_func_t<Scalar>{
+		inv_func_t(const pow_func_t<Scalar> &pf) : pow_func_t<Scalar>(Scalar(1) / pf.p) {};
+	};
+
+	template<typename Scalar>
+	struct addop_func_t : binop_func_t<Scalar, addop_func_t<Scalar>> {
+		constexpr static Scalar Identity = 0;
+		__host_device_func Scalar combine(Scalar v0, Scalar v1) const { return v0 + v1; }
+		template <int N>
+		__host_device_func std::enable_if_t<(N >= 0) && (N < 1), Scalar> diff(Scalar v0, Scalar v1) const { return 1; }
+	};
+	template<typename Scalar>
+	struct mulop_func_t : binop_func_t<Scalar, mulop_func_t<Scalar>> {
+		constexpr static Scalar Identity = 1;
+		__host_device_func Scalar combine(Scalar v0, Scalar v1) const { return v0 * v1; }
+		template <int N>
+		__host_device_func std::enable_if_t<(N >= 0) && (N < 1), Scalar> diff(Scalar v0, Scalar v1) const {
+			if constexpr (N == 0) return v1; else return v0;
+		}
+	};
+	template<typename Scalar>
+	struct minusop_func_t : binop_func_t<Scalar, minusop_func_t<Scalar>> {
+		__host_device_func Scalar combine(Scalar v0, Scalar v1) const { return v0 - v1; }
+		template <int N>
+		__host_device_func std::enable_if_t<(N >= 0) && (N < 1), Scalar> diff(Scalar v0, Scalar v1) const {
+			if constexpr (N == 0) return 1; else return -1;
+		}
+	};
+	template<typename Scalar>
+	struct divop_func_t : binop_func_t<Scalar, divop_func_t<Scalar>> {
+		__host_device_func Scalar combine(Scalar v0, Scalar v1) const { return v0 / v1; }
+		template <int N>
+		__host_device_func std::enable_if_t<(N >= 0) && (N < 1), Scalar> diff(Scalar v0, Scalar v1) const {
+			if constexpr (N == 0) return Scalar(1) / v1; else return -v0 / (v1 * v1);
+		}
+	};
 
 	template<typename subExp_t, typename Scalar = float>
 	struct exp_data_t {

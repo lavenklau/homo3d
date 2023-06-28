@@ -6,6 +6,7 @@
 #ifdef __CUDACC__
 #include "culib/lib.cuh"
 using namespace culib;
+// #include "TensorExpression.cuh"
 #endif
 
 #pragma push_macro("max")
@@ -26,6 +27,13 @@ namespace homo {
 	extern void vdb2tensor(const std::string& fname, TensorView<float> tf, bool interpolation = true);
 	extern void loadvdb(const std::string& filename, std::vector<int> pos[3], std::vector<float>& gridvalues);
 	extern void tensorProject(TensorView<float> tf, float beta, float eta, float a, float b);
+
+	template <int BlockSize, bool omitPreMap, typename AccS, typename Accd, typename ReduceOp, 
+	std::enable_if_t<(BlockSize == 512), int > = 0 >
+	__global__ void tensor_reduce(size_t n_src, AccS accs, Accd accd, ReduceOp op);
+	template <int BlockSize, typename Scalar, typename AccS, typename Accd, typename ReduceOp, 
+			  std::enable_if_t<(BlockSize == 512), int> = 0>
+	__global__ void tensor_reduce_gradient(AccS accs, Accd grad, Scalar res, Scalar lastdiff, ReduceOp op);
 
 	struct HomoTraits;
 
@@ -374,7 +382,7 @@ namespace homo {
 			return minValue;
 #endif 
 		}
-		T sum(void) {
+		T Sum(void) {
 #ifdef __CUDACC__
 			auto iter = view().begin();
 			SumOp<T> sumop;
@@ -475,6 +483,10 @@ namespace homo {
 	template<typename Scalar, typename opExp> struct exp_umker_t;
 	template<typename Scalar, typename opExp> struct sigmoid_umker_t;
 	template<typename Scalar> struct eye_umker_t;
+	template<typename Scalar,typename Operand, typename ReduceOp> struct reduce_tsexp_t;
+	template<typename Scalar> struct SumReduceOp;
+	template<typename Scalar> struct LogSumExpOp;
+	template<typename Scalar> struct PnormReduceOp;
 
 #define IS_TYPE_V(TypeName) \
 template<typename Arg> struct is_##TypeName { static constexpr bool value = false; }; \
@@ -589,6 +601,16 @@ template<typename Arg> constexpr bool is_##TypeName##_v = is_##TypeName<Arg>::va
 			return conv_tsexp_t <T, ConvKernel, subExp_t>(subexp, kernel);
 		}
 
+		__host_device_func auto sum(void) {
+			auto& subexp = *static_cast<subExp_t*>(this);
+			return reduce_tsexp_t<T, subExp_t, SumReduceOp<T>>(subexp, SumReduceOp<T>());
+		}
+
+		__host_device_func auto pnorm(T p) {
+			auto& subexp = *static_cast<subExp_t*>(this);
+			return reduce_tsexp_t<T, subExp_t, PnormReduceOp<T>>(subexp, PnormReduceOp<T>(p));
+		}
+
 		__host_device_func auto operator/(T x) {
 			return operator*(T{ 1. } / x);
 		}
@@ -597,6 +619,7 @@ template<typename Arg> constexpr bool is_##TypeName##_v = is_##TypeName<Arg>::va
 			return operator+(-b);
 		}
 
+		//__host_device_func auto Sum()
 	};
 
 	template<typename subTensor, typename T = float>
@@ -1103,91 +1126,70 @@ template<typename Arg> constexpr bool is_##TypeName##_v = is_##TypeName<Arg>::va
 		}
 	};
 	// define full expression
-	template<typename Scalar>
-	struct AssociativeOp {
-		Scalar result = 0;
-		Scalar result_grad = 0;
-		__host_device_func void reset(void) {
-			result = 0;
-			result_grad = 0; 
+	struct AssociativeOpBase {};
+
+	struct Void_t {};
+	template<typename Wrapped> struct Shell : Wrapped {
+		Shell(const Wrapped& wr) : Wrapped(wr) {}
+		Shell(void) = default;
+	};
+
+	template <typename Scalar, typename binop, typename UnaryMap, typename InvUnaryMap = inv_func_t<Scalar, UnaryMap>>
+	struct AssociativeOp
+	 : AssociativeOpBase, binop, Shell<UnaryMap>, 
+	//  std::conditional_t<std::is_convertible_v<InvUnaryMap, UnaryMap>, Void_t, InvUnaryMap>
+	InvUnaryMap
+	{
+		using g    = Shell<UnaryMap>;
+		// using gInv = std::conditional_t<std::is_convertible_v<InvUnaryMap, UnaryMap>, UnaryMap, InvUnaryMap>;
+		using gInv = InvUnaryMap;
+		using Sop  = binop;
+		using Sop::combine;
+		constexpr static auto Id = Sop::Identity;
+		template <typename G = UnaryMap, 
+				  // if func has status, the inv func should have status too
+				  std::enable_if_t<!std::is_empty_v<G>, int> = 0 > 
+		AssociativeOp(const UnaryMap &f) : g(f), gInv(f) { }
+		template <typename G = UnaryMap,
+				  // if func has status, the inv func should have status too
+				  std::enable_if_t<std::is_empty_v<G>, int> = 0>
+		AssociativeOp(void) {};
+
+		__host_device_func Scalar merge(Scalar s, Scalar v) const { return gInv::valueAt(Sop::combine(g::valueAt(s), g::valueAt(v))); }
+		__host_device_func Scalar raw_merge(Scalar s_raw, Scalar v) const {return Sop::combine(s_raw, g::valueAt(v));}
+		__host_device_func Scalar preMap(Scalar v) const { return g::valueAt(v);}
+		__host_device_func Scalar postMap(Scalar s) const {return gInv::valueAt(s);}
+		template <typename T = binop>
+		__host_device_func std::enable_if_t<std::is_same_v<T, addop_func_t<Scalar>>, Scalar> diff(Scalar s, Scalar xk) const 
+		{ return g::diffAt(xk) / g::diffAt(s); }
+		template <typename T = binop>
+		__host_device_func std::enable_if_t<std::is_same_v<T, mulop_func_t<Scalar>>, Scalar> diff(Scalar s, Scalar xk) const
+		{
+			Scalar pr = g::valueAt(s);
+			Scalar px = g::valueAt(xk);
+			return g::diffAt(xk) * pr / g::diffAt(s) / px;
 		}
 	};
+
 
 	template<typename Op>
-	struct is_associative { static constexpr bool value = false; };
+	constexpr bool is_associative_v = std::is_convertible_v<Op, AssociativeOpBase>;
 
-	template<typename Scalar, template<typename, typename...> class Op>
-	struct is_associative<Op<Scalar>> {
-		static constexpr bool value = std::is_convertible_v<Op<Scalar>, AssociativeOp<Scalar>>;
+	template<typename Scalar>
+	struct PnormOp : public AssociativeOp<Scalar, addop_func_t<Scalar>, pow_func_t<Scalar>> {
+		using Base = AssociativeOp<Scalar, addop_func_t<Scalar>, pow_func_t<Scalar>>;
+		PnormOp(Scalar p) : Base(pow_func_t<Scalar>(p)) {}
 	};
 
-	template<typename Op> constexpr bool is_associative_v = is_associative<Op>::value;
+	template<typename Scalar>
+	struct LogSumExpOp : public AssociativeOp<Scalar, addop_func_t<Scalar>, exp_func_t<Scalar>> { };
 
-	template<typename Scalar,typename ScalarConstant>
-	struct PnormOp : public AssociativeOp<Scalar>
-	{
-		using Base = AssociativeOp<Scalar>;
-		constexpr static Scalar p_ = ScalarConstant::value;
-		__host_device_func void accept(Scalar v) {
-			Base::result += pow_<Scalar>(v, p_);
-		}
-		__host_device_func Scalar accepted(void) {
-			return Base::result;
-		}
-		__host_device_func Scalar reduce(void) {
-			Scalar res = pow_<Scalar>(Base::result, 1. / p_);
-			Base::result_grad = Scalar{ 1 } / p_ * pow_<Scalar>(Base::result, 1. / p_ - 1);
-			return res;
-		}
-		__host_device_func Scalar reduce(Scalar sum) {
-			Base::result = sum;
-			Scalar res = pow_<Scalar>(Base::result, 1. / p_);
-			Base::result_grad = Scalar{ 1 } / p_ * pow_<Scalar>(Base::result, 1. / p_ - 1);
-			return res;
-		}
-		__host_device_func Scalar grad(Scalar v) {
-			return p_ * pow_<Scalar>(v, p_ - 1) * Base::result_grad;
-		}
-		__host_device_func Scalar grad_result(Scalar res) {
-			return Scalar(1) / p_ * pow_<Scalar>(res, 1 - p_);
-		}
-		__host_device_func Scalar grad(Scalar v, Scalar resultGrad) {
-			return p_ * pow_<Scalar>(v, p_ - 1) * resultGrad;
-		}
-	};
+	template<typename Scalar>
+	struct SumReduceOp : public AssociativeOp<Scalar, addop_func_t<Scalar>, eye_func_t<Scalar>>  { };
 
-	template<typename Scalar, typename ScalarConstant>
-	struct LogSumExpOp : public AssociativeOp<Scalar>
-	{
-		using Base = AssociativeOp<Scalar>;
-		constexpr static Scalar p_ = ScalarConstant::value;
-		__host_device_func void accept(Scalar v) {
-			Base::result += exp_<Scalar>(v * p_);
-		}
-		__host_device_func Scalar accepted(void) {
-			return Base::result;
-		}
-		__host_device_func Scalar reduce(void) {
-			Scalar res = log_<Scalar>(Base::result) / p_;
-			Base::result_grad = 1. / Base::result;
-			return res;
-		}
-		__host_device_func Scalar reduce(Scalar sum) {
-			Base::result = sum;
-			Scalar res = log_<Scalar>(Base::result) / p_;
-			Base::result_grad = 1. / Base::result;
-			return res;
-			
-		}
-		__host_device_func Scalar grad(Scalar v) {
-			return exp_<Scalar>(v*p_) * Base::result_grad;
-		}
-		__host_device_func Scalar grad_result(Scalar result) {
-			return Scalar(1) / exp_<Scalar>(result * p_);
-		}
-		__host_device_func Scalar grad(Scalar v, Scalar resultGrad) {
-			return exp_<Scalar>(v * p_) * resultGrad;
-		}
+	template<typename Scalar>
+	struct PnormReduceOp : public AssociativeOp<Scalar, addop_func_t<Scalar>, pow_func_t<Scalar>>  {
+		PnormReduceOp(Scalar p) : AssociativeOp<Scalar, addop_func_t<Scalar>, pow_func_t<Scalar>>(p){}
 	};
 
 	template<typename Scalar, typename Kernel, typename opExp_t,
@@ -1276,8 +1278,69 @@ template<typename Arg> constexpr bool is_##TypeName##_v = is_##TypeName<Arg>::va
 	struct sparse_tsexp_t
 		: public tsexp_t<sparse_tsexp_t<Scalar, Kernel, opExp_t>, Scalar>
 	{
-		
+		// ToDo
 	};
+
+	template<typename Scalar,typename Operand, typename ReduceOp>
+	struct reduce_tsexp_t 
+		: public exp_t<reduce_tsexp_t<Scalar, Operand, ReduceOp>, Scalar>
+	{
+		using Base = exp_t<reduce_tsexp_t<Scalar, Operand, ReduceOp>, Scalar>;
+		Operand opr;
+		ReduceOp op;
+		reduce_tsexp_t(const Operand &opr_, const ReduceOp &rop_) : opr(opr_), op(rop_) {}
+		struct bracketWrapper
+		{
+			Scalar *pdata;
+			__host_device_func auto &operator()(int k) { return pdata[k]; }
+			__host_device_func auto &operator()(int k) const { return pdata[k]; }
+		};
+		__host_device_func Scalar eval_imp(void) {
+			auto accs = opr.value().view();
+			auto n_src = accs.size();
+			size_t grid_size, block_size;
+			Scalar res = 0;
+#ifdef __CUDACC__
+			make_kernel_param(&grid_size, &block_size, n_src, 512);
+			auto buffer = getTempBuffer(grid_size * sizeof(Scalar));
+			Scalar *pbuf = buffer.data<Scalar>();
+			tensor_reduce<512, false><<<grid_size, block_size>>>(n_src, accs, bracketWrapper{pbuf}, op);
+			cudaDeviceSynchronize();
+			cuda_error_check;
+			// for (int i = 0; i < 100; i++) { printf("%f, ", (Scalar)DeviceAddressProxy<Scalar>(pbuf + i)); } printf("\n");
+			auto buffer1 = getTempBuffer((grid_size / 200 + 1) * sizeof(Scalar));
+			while (grid_size > 1)
+			{
+				auto pbuf1 = buffer1.data<Scalar>();
+				n_src = grid_size;
+				make_kernel_param(&grid_size, &block_size, n_src, 512);
+				tensor_reduce<512, true><<<grid_size, block_size>>>(n_src, bracketWrapper{pbuf}, bracketWrapper{pbuf1}, op);
+				cudaDeviceSynchronize();
+				cuda_error_check;
+				// for (int i = 0; i < 100; i++) { printf("%f, ", (Scalar)DeviceAddressProxy<Scalar>(pbuf1 + i)); } printf("\n");
+				std::swap(pbuf, pbuf1);
+			}
+			cudaMemcpy(&res, pbuf, sizeof(Scalar), cudaMemcpyDeviceToHost);
+#else
+#endif
+			return res;
+		}
+		__host_device_func void backward_imp(Scalar lastdiff) {
+			auto gradacc = opr.diff().view();
+#ifdef __CUDACC__
+			size_t grid_size, block_size;
+			int n_src = gradacc.size();
+			make_kernel_param(&grid_size, &block_size, n_src, 512);
+			// printf("base value = %f, lastdiff  %f\n", Base::value(), lastdiff);
+			tensor_reduce_gradient<512, Scalar><<<grid_size, block_size>>>(opr.value().view(), gradacc, Base::value(), lastdiff, op);
+			cudaDeviceSynchronize();
+			cuda_error_check;
+			// printf("backward grad sum = %f\n", grad.Sum());
+			opr.backward(opr.diff());
+#else
+#endif
+		}
+	}; 
 
 	template<typename subVar = void, typename Scalar = float>
 	struct var_tsexp_t
