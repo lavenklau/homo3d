@@ -223,7 +223,7 @@ void OCOptimizer::update(Tensor<float> sens, Tensor<float> rho, float volratio) 
 		cudaDeviceSynchronize();
 		cuda_error_check;
 		//float curVol = parallel_sum(newrho, ne) / ne;
-		float curVol = newrho.sum() / newrho.size();
+		float curVol = newrho.Sum() / newrho.size();
 		printf("[OC] : g = %.4e   vol = %4.2f%% (Goal %4.2f%%)       \r", gSens, curVol * 100, volratio * 100);
 		if (curVol < volratio - 0.0001) {
 			maxSens = gSens;
