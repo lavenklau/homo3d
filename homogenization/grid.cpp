@@ -205,6 +205,12 @@ size_t Grid::allocateBuffer(int nv, int ne)
 		r_g[i] = getMem().addBuffer(homoutils::formated("%s_r_%d", getName().c_str(), i), nv * sizeof(float) * 2)->data<float>();
 	}
 	total += nv * 9 * sizeof(float);
+
+	// allocate heat nodal vectors
+	uHeat_g = getMem().addBuffer(homoutils::formated("%s_uheat_", getName().c_str()), nv * sizeof(float))->data<float>();
+	fHeat_g = getMem().addBuffer(homoutils::formated("%s_fheat_", getName().c_str()), nv * sizeof(float))->data<float>();
+	rHeat_g = getMem().addBuffer(homoutils::formated("%s_rheat_", getName().c_str()), nv * sizeof(float))->data<float>();
+
 	// allocate stencil buffer
 	if (!is_root) {
 		for (int i = 0; i < 27; i++) {
@@ -214,6 +220,11 @@ size_t Grid::allocateBuffer(int nv, int ne)
 			stencil_g[i] = getMem().addBuffer(homoutils::formated("%s_st_%d", getName().c_str(), i), nv * sizeof(glm::mat3))->data<glm::mat3>();
 		}
 		total += nv * sizeof(float) * 27 * 9;
+		// add heat stencil
+		for (int i = 0; i < 27; i++) {
+			heatStencil_g[i] = getMem().addBuffer(homoutils::formated("%s_heat_st_%d", getName().c_str(), i), nv * sizeof(float))->data<float>();
+		}
+		total += nv * sizeof(float) * 27;
 	}
 	// allocate characteristic buffer
 	/*for (int i = 0; i < 6; i++) */{
@@ -252,6 +263,9 @@ size_t Grid::allocateBuffer(int nv, int ne)
 	if(is_root){
 		total += ne * sizeof(float);
 		rho_g = getMem().addBuffer(homoutils::formated("%s_rho", getName().c_str()), ne * sizeof(float))->data<float>();
+
+		rhoHeat_g = getMem().addBuffer(homoutils::formated("%s_rhoheat", getName().c_str()), ne * sizeof(float))->data<float>();
+		total += ne * sizeof(float);
 	}
 
 	printf("%s allocated %zd MB GPU memory\n", getName().c_str(), total / 1024 / 1024);
@@ -342,7 +356,7 @@ void Grid::setUchar(int k, float** uchar)
 	v3_download(uchar_h[k], uchar);
 }
 
-static Eigen::Matrix<double, -1, -1> transBase;
+static Eigen::Matrix<double, -1, -1> transBase, transBaseHeat;
 
 bool homo::Grid::solveHostEquation(void)
 {
@@ -366,6 +380,26 @@ bool homo::Grid::solveHostEquation(void)
 
 	v3_fromMatrix(u_g, x.cast<float>(), false);
 
+	return true;
+}
+
+bool homo::Grid::solveHostEquationHeat(void)
+{
+	Eigen::VectorXd b = v1_toMatrix(fHeat_g, true).cast<double>();
+#if 1
+	// remove translation
+	b = b - transBaseHeat * (transBaseHeat.transpose() * b);
+#endif
+	eigen2ConnectedMatlab("b", b);
+
+	Eigen::Matrix<double, -1, 1> x = hostBiCGSolver.solve(b);
+	if (hostBiCGSolver.info() != Eigen::Success) {
+		printf("\033[31mhost equation failed to solve\033[0m\n");
+		return false;
+	}
+
+	eigen2ConnectedMatlab("x", x);
+	v1_fromMatrix(uHeat_g, x.cast<float>(), false);
 	return true;
 }
 
@@ -773,6 +807,28 @@ Eigen::Matrix<float, -1, 1> homo::Grid::v3_toMatrix(float* u[3], bool removePeri
 	return b;
 }
 
+Eigen::Matrix<float, -1, 1> homo::Grid::v1_toMatrix(float* u, bool removePeriodDof) {
+	int nv;
+	if (removePeriodDof) {
+		nv = cellReso[0] * cellReso[1] * cellReso[2];
+	} else {
+		nv = (cellReso[0] + 1) * (cellReso[1] + 1) * (cellReso[2] + 1);
+	}
+	Eigen::Matrix<float, -1, 1> b(nv, 1);
+	b.fill(0);
+	std::vector<float> vhost(n_gsvertices());
+	std::vector<VertexFlags> vflags(n_gsvertices());
+	cudaMemcpy(vflags.data(), vertflag, sizeof(VertexFlags) * n_gsvertices(), cudaMemcpyDeviceToHost);
+	cudaMemcpy(vhost.data(), u, sizeof(float) * n_gsvertices(), cudaMemcpyDeviceToHost);
+	for (int k = 0; k < n_gsvertices(); k++) {
+		if (vflags[k].is_fiction() || vflags[k].is_period_padding())
+			continue;
+		int id = vgsid2lexid_h(k, removePeriodDof);
+		b[id] = vhost[k];
+	}
+	return b;
+}
+
 void homo::Grid::v3_fromMatrix(float* u[3], const Eigen::Matrix<float, -1, 1>& b, bool hasPeriodDof /*= false*/)
 {
 	for (int i = 0; i < 3; i++) {
@@ -790,6 +846,24 @@ void homo::Grid::v3_fromMatrix(float* u[3], const Eigen::Matrix<float, -1, 1>& b
 		}
 		cudaMemcpy(u[i], ui.data(), sizeof(float) * n_gsvertices(), cudaMemcpyHostToDevice);
 	}
+	enforce_period_vertex(u, false);
+	pad_vertex_data(u);
+}
+
+void homo::Grid::v1_fromMatrix(float* u, const Eigen::Matrix<float, -1, 1>& b, bool hasPeriodDof ) {
+	std::vector<float> ui(n_gsvertices());
+	std::fill(ui.begin(), ui.end(), 0.);
+	int nvlex;
+	if (hasPeriodDof) {
+		nvlex = (cellReso[0] + 1) * (cellReso[1] + 1) * (cellReso[2] + 1);
+	} else {
+		nvlex = cellReso[0] * cellReso[1] * cellReso[2];
+	}
+	for (int k = 0; k < nvlex; k++) {
+		int gsid = vlexid2gsid(k, hasPeriodDof);
+		ui[gsid] = b[k];
+	}
+	cudaMemcpy(u, ui.data(), sizeof(float) * n_gsvertices(), cudaMemcpyHostToDevice);
 	enforce_period_vertex(u, false);
 	pad_vertex_data(u);
 }
@@ -950,6 +1024,66 @@ Eigen::SparseMatrix<double> homo::Grid::stencil2matrix(void)
 	K.setFromTriplets(trips.begin(), trips.end());
 
 	return K;
+}
+
+Eigen::SparseMatrix<double> homo::Grid::heatStencil2matrix(void) {
+	Eigen::SparseMatrix<double> K;
+	int ndof = cellReso[0] * cellReso[1] * cellReso[2];
+	K.resize(ndof, ndof);
+	std::vector<float> kij(n_gsvertices());
+	using trip = Eigen::Triplet<double>;
+	std::vector<trip> trips;
+	std::vector<VertexFlags> vflags(n_gsvertices());
+	std::vector<CellFlags> eflags(n_gscells());
+	cudaMemcpy(eflags.data(), cellflag, sizeof(CellFlags) * n_gscells(), cudaMemcpyDeviceToHost);
+	cudaMemcpy(vflags.data(), vertflag, sizeof(VertexFlags) * n_gsvertices(), cudaMemcpyDeviceToHost);
+	if (!is_root) {
+		for (int i = 0; i < 27; i++) {
+			int noff[3] = { i % 3 - 1, i / 3 % 3 - 1, i / 9 - 1 };
+			cudaMemcpy(kij.data(), heatStencil_g[i], sizeof(float) * n_gsvertices(), cudaMemcpyDeviceToHost);
+			for (int k = 0; k < n_gsvertices(); k++) {
+				if (vflags[k].is_fiction() || vflags[k].is_period_padding()) continue;
+				int vpos[3];
+				vgsid2lexpos_h(k, vpos);
+				int oldvpos[3] = {vpos[0], vpos[1], vpos[2]};
+				if (vpos[0] >= cellReso[0] || vpos[1] >= cellReso[1] || vpos[2] >= cellReso[2])
+					continue;
+				int vid = vlexpos2vlexid_h(vpos, true);
+				vpos[0] += noff[0];
+				vpos[1] += noff[1];
+				vpos[2] += noff[2];
+				int neiid = vlexpos2vlexid_h(vpos, true);
+				trips.emplace_back(vid, neiid , kij[k]);
+			}
+		}
+	} else {
+		std::vector<float> rhohost(n_gscells());
+		cudaMemcpy(rhohost.data(), rhoHeat_g, sizeof(float) * n_gscells(), cudaMemcpyDeviceToHost);
+		Eigen::Matrix<float, 8, 8> ke = getHeatTemplateMatrix();
+		for (int i = 0; i < eflags.size(); i++) {
+			if (eflags[i].is_fiction() || eflags[i].is_period_padding()) continue;
+			float rho_p = rhohost[i];
+			int epos[3];
+			egsid2lexpos_h(i, epos);
+			for (int vi = 0; vi < 8; vi++) {
+				int vipos[3] = { epos[0] + vi % 2, epos[1] + vi / 2 % 2, epos[2] + vi / 4 };
+				// todo check Dirichlet boundary
+				int vi_id = vlexpos2vlexid_h(vipos, true);
+				for (int vj = 0; vj < 8; vj++) {
+					int vjpos[3] = { epos[0] + vj % 2, epos[1] + vj / 2 % 2, epos[2] + vj / 4 };
+					// todo check Dirichlet boundary
+					int vj_id = vlexpos2vlexid_h(vjpos, true);
+					int ir = vi_id, jc = vj_id;
+					trips.emplace_back(ir, jc, ke(vi, vj) * rho_p);
+				}
+			}
+		}
+	}
+
+	K.setFromTriplets(trips.begin(), trips.end());
+
+	return K;
+
 }
 
 int homo::Grid::vgsid2lexid_h(int gsid, bool removePeriodDof /*= false*/)
@@ -1313,6 +1447,37 @@ void homo::Grid::restrict_stencil_arround_dirichelt_boundary(void) {
 					}
 				}
 			}
+		}
+	}
+}
+
+void homo::Grid::assembleHeatHostMatrix(void) {
+	KHeathost = heatStencil2matrix();
+	eigen2ConnectedMatlab("Khost", KHeathost);
+	hostBiCGSolverHeat.compute(KHeathost);
+	// init translation base
+	Eigen::Matrix<double, -1, -1> fk(KHeathost);
+	Eigen::FullPivLU<Eigen::Matrix<double, -1, -1>> dec;
+	dec.setThreshold(5e-2);
+	dec.compute(fk);
+	transBaseHeat = dec.kernel();
+	for (int i = 0; i < transBaseHeat.cols(); i++) {
+		for (int j = 0; j < i; j++) {
+			transBaseHeat.col(i) -= transBaseHeat.col(i).dot(transBaseHeat.col(j)) * transBaseHeat.col(j);
+		}
+		transBaseHeat.col(i).normalize();
+	}
+	printf("[Heat] Coarse system degenerate rank = %d\n", int(transBaseHeat.cols()));
+	eigen2ConnectedMatlab("transbase", transBaseHeat);
+
+	// DEBUG
+	if (1) {
+		Eigen::Matrix<double, -1, 1> bhost(KHeathost.rows(), 1);
+		bhost.setRandom();
+		bhost = bhost - transBaseHeat * (transBaseHeat.transpose() * bhost);
+		Eigen::VectorXd x = hostBiCGSolver.solve(bhost);
+		if (hostBiCGSolver.info() != Eigen::Success) {
+			printf("\033[31m[Heat] Solver test failed, err = %d\033[0m\n", int(hostBiCGSolver.info()));
 		}
 	}
 }

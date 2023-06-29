@@ -3,7 +3,7 @@
 
 using namespace homo;
 
-__device__ bool inStrictBound(int pi[3], int cover[3]) {
+__device__ static bool inStrictBound(int pi[3], int cover[3]) {
 	return pi[0] > -cover[0] && pi[0] < cover[0] &&
 		pi[1] > -cover[1] && pi[1] < cover[1] &&
 		pi[2] > -cover[2] && pi[2] < cover[2];

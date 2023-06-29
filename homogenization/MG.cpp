@@ -336,13 +336,17 @@ void homo::MG::updateStencils(void)
 {
 	for (int i = 1; i < grids.size(); i++) {
 		grids[i]->restrict_stencil();
-		// DEBUG
-		//if (i == 1) {
-		//	grids[1]->assembleHostMatrix();
-		//	//printf("wait here");
-		//}
 		if (i == grids.size() - 1) {
 			grids[i]->assembleHostMatrix();
+		}
+	}
+}
+
+void homo::MG::updateHeatStencils(void) {
+	for (int i = 1; i < grids.size(); i++) {
+		grids[i]->restrict_stencil_heat();
+		if (i == grids.size() - 1) {
+			grids[i]->assembleHeatHostMatrix();
 		}
 	}
 }
@@ -697,4 +701,32 @@ void homo::MG::test_pcg(void)
 	//grids[0]->enforce_period_boundary(grids[0]->f_g, true);
 	
 	pcg();
+}
+
+void homo::MG::v_cycle_heat(float w_SOR /*= 1.f*/, int pre /*= 1*/, int post /*= 1*/) {
+	for (int i = 0; i < grids.size(); i++)
+	{
+		if (i != 0)
+		{
+			grids[i - 1]->update_residual_heat();
+			grids[i]->restrict_residual_heat();
+			grids[i]->reset_displacement_heat();
+		}
+		if (i == grids.size() - 1)
+		{
+			grids[i]->solveHostEquationHeat();
+		}
+		else
+		{
+			grids[i]->gs_relaxation(w_SOR);
+		}
+	}
+
+	for (int i = grids.size() - 2; i >= 0; i--)
+	{
+		grids[i]->prolongate_correction_heat();
+		grids[i]->gs_relaxation_heat(w_SOR);
+	}
+
+	return /*grids[0]->relative_residual()*/;
 }

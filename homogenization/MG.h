@@ -23,6 +23,8 @@ struct MG{
 
 	void v_cycle(float w_SOR = 1.f, int pre = 1, int post = 1);
 
+	void v_cycle_heat(float w_SOR = 1.f, int pre = 1, int post = 1);
+
 	void v_cycle_verbose(float w_SOR = 1.f, int pre = 1, int post = 1);
 
 	void reset_displacement(void);
@@ -33,7 +35,11 @@ struct MG{
 
 	void updateStencils(void);
 
+	void updateHeatStencils(void);
+
 	void test_v_cycle(void);
+
+	void test_heat_fem(void);
 
 	void test_diag_precondition(void);
 

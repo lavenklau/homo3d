@@ -646,6 +646,10 @@ void testHomogenization(cfg::HomoConfig config) {
 		_TOC;
 		printf("eigen time usage = %4.2f ms \n", tictoc::get_record("eigen"));
 	}
+	else if(config.testname=="heatfem") {
+		Homogenization hom(config);
+		hom.mg_->test_heat_fem();
+	}
 	else if (config.testname == "cudatest") {
 		cudaTest();
 	}

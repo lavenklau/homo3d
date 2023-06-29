@@ -944,3 +944,19 @@ void homo::Homogenization::Sensitivity(float dC[6][6], float* sens, int pitchT, 
 }
 
 
+void homo::MG::test_heat_fem(void) {
+	// todo : set heat conductivity
+	grids[0]->v1_rand(grids[0]->rhoHeat_g, 0.2, 1, grids[0]->n_gscells());
+	// todo : heat source
+	grids[0]->v1_reset(grids[0]->fHeat_g, 1);
+	// todo : set your own sink nodes
+	grids[0]->setSinkNodes();
+	updateHeatStencils();
+	double rel = 1;
+	for (int iter = 0; iter < 200 && rel > 1e-2; iter++) {
+		v_cycle_heat();
+		rel = grids[0]->relative_residual_heat();
+		printf("iter %04d : rel %.4e       \r", rel);
+	}
+	exit(0);
+}

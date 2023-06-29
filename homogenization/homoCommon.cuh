@@ -55,6 +55,22 @@ extern __constant__ int gGsCoarseVertexEnd[8];
 extern __constant__ int gGsFineVertexEnd[8];
 extern __constant__ int gGsFineCellEnd[8];
 
+// heat
+extern __constant__ float* gUHeat;
+extern __constant__ float* gFHeat;
+extern __constant__ float* gRHeat;
+extern __constant__ float* gUHeatfine;
+extern __constant__ float* gFHeatfine;
+extern __constant__ float* gRHeatfine;
+extern __constant__ float* gUHeatcoarse;
+extern __constant__ float* gFHeatcoarse;
+extern __constant__ float* gRHeatcoarse;
+extern __constant__ float* rxHeatStencil[27];
+extern __constant__ float* rxHeatCoarseStencil[27];
+extern __constant__ float* rxHeatFineStencil[27];
+extern __constant__ double gKHd[8][8];
+
+
 //__constant__ double* guchar[6][3];
 //__constant__ double* gfchar[6][3];
 extern __constant__ float* guchar[3];
@@ -80,6 +96,16 @@ __device__ void loadTemplateMatrix(volatile T KE[24][24]) {
 		else {
 			print_exception;
 		}
+	}
+	__syncthreads();
+}
+
+template<typename T>
+__device__ void loadHeatTemplateMatrix(volatile T KH[8][8]) {
+	for (int i = threadIdx.x; i < 8 * 8; i += blockDim.x) {
+		int ri = i / 8;
+		int cj = i % 8;
+		KH[ri][cj] = gKHd[ri][cj];
 	}
 	__syncthreads();
 }

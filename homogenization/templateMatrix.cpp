@@ -74,6 +74,9 @@ Eigen::Matrix<double, 6, 6> elastic_matrix;
 Eigen::Matrix<double, 24, 24> Ke;
 Eigen::Matrix<float, 24, 24> fKe;
 
+Eigen::Matrix<double, 8, 8> KT;
+Eigen::Matrix<float, 8, 8> fKT;
+
 Scalar* g_Ke;
 
 Eigen::Matrix<double, 3, 1> dN(int i, double elen, Eigen::Matrix<double, 3, 1>& param) {
@@ -205,6 +208,15 @@ const Eigen::Matrix<Scalar, 24, 24>& getTemplateMatrix(void)
 	return fKe;
 }
 
+const Eigen::Matrix<Scalar, 8, 8> &getHeatTemplateMatrix(void)
+{
+	return fKT;
+}
+
+const Eigen::Matrix<double, 8, 8>& getHeatTemplateMatrixFp64(void) {
+	return KT;
+}
+
 const Eigen::Matrix<double, 24, 24>& getTemplateMatrixFp64(void)
 {
 	return Ke;
@@ -233,3 +245,58 @@ const char* getKeMu72(void)
 	return kemu72;
 }
 
+template <int modulu = 0>
+struct Zp
+{
+	int operator[](int n)
+	{
+		n -= modulu * (n / modulu);
+		n += modulu;
+		return n % modulu;
+	}
+};
+
+Eigen::Matrix<Scalar, 3, 1> dN(int i, Scalar elen, Eigen::Matrix<Scalar, 3, 1>& param) {
+	if (i > 7 || i < 0) throw std::runtime_error("");
+	int id[3] = { (i % 2),   (i / 2 % 2),   (i / 4) };
+	Scalar r[3];
+	for (int k = 0; k < 3; k++) {
+		r[k] = (id[k] ? param[k] : (1 - param[k]));
+	}
+
+	Eigen::Matrix<Scalar, 3, 1> dn;
+	for (int k = 0; k < 3; k++) {
+		Zp<3> j;
+		dn[k] = (id[k] ? 1.0 / elen : -1.0 / elen) * r[j[k + 1]] * r[j[k + 2]];
+	}
+	return dn;
+}
+
+void initHeatTemplateMatrix(void) {
+	Eigen::Matrix<Scalar, 3, 1> gs_points[8];
+	double p = sqrt(3) / 3;
+	for (int i = 0; i < 8; i++) {
+		int x = 2 * (i % 2) - 1;
+		int y = 2 * (i / 2 % 2) - 1;
+		int z = 2 * (i / 4) - 1;
+		gs_points[i][0] = (x * p + 1) / 2;
+		gs_points[i][1] = (y * p + 1) / 2;
+		gs_points[i][2] = (z * p + 1) / 2;
+	}
+	KT.fill(0);
+	// Gauss Quadrature Point
+	for (int i = 0; i < 8; i++) {
+		Eigen::Matrix<Scalar, 3, 1> grad_N[8];
+		// Element Vertex Point
+		for (int k = 0; k < 8; k++) {
+			grad_N[k] = dN(k, 1, gs_points[i]);
+		}
+		for (int row = 0; row < 8; row++) {
+			for (int col = 0; col < 8; col++) {
+				KT(row, col) += grad_N[row].dot(grad_N[col]);
+			}
+		}
+	}
+	std::cout << "KT = \n" << KT << std::endl;
+	fKT = KT.cast<float>();
+}

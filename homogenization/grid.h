@@ -43,7 +43,10 @@ enum  FlagBit : uint16_t {
 	MAX_BOUNDARY_MASK = 0b11100000000,
 	BOUNDARY_MASK = 0b11111100000,
 
-	DIRICHLET_BOUNDARY = 0b100000000000
+	DIRICHLET_BOUNDARY = 0b100000000000,
+
+
+	SINK_NODES = 0b1000000000000,
 };
 
 struct FlagBase {
@@ -71,6 +74,8 @@ struct FlagBase {
 
 	__host_device_func bool is_dirichlet_boundary(void) { return flagbits & DIRICHLET_BOUNDARY; }
 	__host_device_func bool set_dirichlet_boundary(void) { flagbits |= DIRICHLET_BOUNDARY; }
+	__host_device_func bool is_sink(void) {return flagbits & SINK_NODES;}
+	__host_device_func void set_sink(void) { flagbits |= SINK_NODES;}
 };
 
 struct VertexFlags : public FlagBase {
@@ -121,6 +126,10 @@ struct Grid {
 	//float* stencil_g[27][9];
 	glm::mat3* stencil_g[27];
 
+	float* heatStencil_g[27];
+	float *uHeat_g, *fHeat_g, *rHeat_g;
+	float *rhoHeat_g;
+
 	float* u_g[3];
 	float* f_g[3];
 	float* r_g[3];
@@ -151,7 +160,9 @@ struct Grid {
 	std::map<std::string, std::any> vertexTraits;
 
 	Eigen::BiCGSTAB<Eigen::SparseMatrix<double>, Eigen::IncompleteLUT<double>> hostBiCGSolver;
+	Eigen::BiCGSTAB<Eigen::SparseMatrix<double>, Eigen::IncompleteLUT<double>> hostBiCGSolverHeat;
 	Eigen::SparseMatrix<double> Khost;
+	Eigen::SparseMatrix<double> KHeathost;
 	//Eigen::SparseQR<decltype(Khost),Eigen::AMDOrderin>
 
 	template<typename T>
@@ -216,11 +227,19 @@ struct Grid {
 
 	bool solveHostEquation(void);
 
+	bool solveHostEquationHeat(void);
+
+	bool setSinkNodes(void);
+
 	void testCoarsestModes(void);
 
 	void assembleHostMatrix(void);
 
+	void assembleHeatHostMatrix(void);
+
 	void gs_relaxation(float w_SOR = 1.f, int times_ = 1);
+
+	void gs_relaxation_heat(float w_SOR = 1.f, int times_ = 1);
 
 	void gs_relaxation_ex(float w_SOR = 1.f);
 
@@ -234,11 +253,19 @@ struct Grid {
 
 	void prolongate_correction(void);
 
+	void prolongate_correction_heat(void);
+
 	void restrict_residual(void);
+
+	void restrict_residual_heat(void);
 
 	void restrict_stencil(void);
 
+	void restrict_stencil_heat(void);
+
 	void update_residual(void);
+
+	void update_residual_heat(void);
 
 	void enforce_unit_macro_strain(int istrain);
 
@@ -267,6 +294,12 @@ struct Grid {
 	void reset_residual(void);
 
 	void reset_force(void);
+
+	void reset_displacement_heat(void);
+
+	void reset_residual_heat(void);
+
+	void reset_force_heat(void);
 
 	void translateForce(int type_, float* v[3]); // 1. zero dirichlet force; 2. zero global translation
 
@@ -320,8 +353,10 @@ struct Grid {
 
 
 	void v3_reset(float* v[3], int len = -1);
+	void v1_reset(float* v, float val = 0, int len = -1);
 	void v3_const(float* v[3], const float v_const[3]);
 	void v3_rand(float* v[3], float low, float upp, int len = -1);
+	void v1_rand(float* v, float low, float upp, int len = -1);
 	float v3_norm(float* v[3], bool removePeriodDof = false, int len = -1);
 	float v3_diffnorm(float* v[3], float* u[3], int len = -1);
 	void v3_copy(float* dst[3], float* src[3], int len = -1);
@@ -339,7 +374,9 @@ struct Grid {
 	void v3_destroy(float* v[3]);
 	float v3_dot(float* v[3], float* u[3], bool removePeriodDof = false, int len = -1);
 	Eigen::Matrix<float, -1, 1> v3_toMatrix(float* u[3], bool removePeriodDof = false);
+	Eigen::Matrix<float, -1, 1> v1_toMatrix(float* u, bool removePeriodDof = false);
 	void v3_fromMatrix(float* u[3], const Eigen::Matrix<float, -1, 1>& b, bool hasPeriodDof = false);
+	void v1_fromMatrix(float* u, const Eigen::Matrix<float, -1, 1>& b, bool hasPeriodDof = false);
 	void v3_stencilOnLeft(float* v[3], float* Kv[3]);
 	void v3_average(float* v[3], float vMean[3], bool removePeriodDof = false);
 
@@ -348,6 +385,7 @@ struct Grid {
 	void array2matlab(const std::string& matname, float* hostdata, int len);
 
 	double relative_residual(void);
+	double relative_residual_heat(void);
 	double residual(void);
 	//double compliance(double* displacement[3]);
 	double compliance(float* u[3], float* v[3]);
@@ -360,6 +398,7 @@ struct Grid {
 	void lexistencil2matlab(const std::string& name);
 
 	Eigen::SparseMatrix<double> stencil2matrix(void);
+	Eigen::SparseMatrix<double> heatStencil2matrix(void);
 
 	int vgsid2lexid_h(int gsid, bool removePeriodDof = false);
 	void vgsid2lexpos_h(int gsid, int pos[3]);
@@ -372,16 +411,19 @@ struct Grid {
 	void lexi2gsorder(float* src, float* dst, LexiType type_, bool lexipadded = false);
 	void lexiStencil2gsorder(void);
 	void enforce_period_stencil(bool additive);
+	void enforce_period_heat_stencil(bool additive);
 	//void gather_boundary_force(double* f[3]);
 	void enforce_period_boundary(float* v[3], bool additive = false);
 	void enforce_dirichlet_boundary(float* v[3]);
 	void enforce_dirichlet_stencil(void);
 	void enforce_period_vertex(double* v[3], bool additive = false);
+	void enforce_period_vertex(float* v, bool additive = false);
 	void enforce_period_vertex(float* v[3], bool additive = false);
 	void enforce_period_vertex(glm::mat3* v, bool additive = false);
 	void pad_vertex_data(double* v[3]);
 	void pad_vertex_data(float* v[3]);
 	void pad_vertex_data(glm::mat3* v);
+	void pad_vertex_data(float* v);
 	void pad_cell_data(float* e);
 	void enforce_period_element(float* data);
 

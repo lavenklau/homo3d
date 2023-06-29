@@ -16,9 +16,17 @@ void initTemplateMatrix(Scalar element_len, homo::BufferManager& gm, Scalar ymod
 
 const Eigen::Matrix<Scalar, 24, 24>& getTemplateMatrix(void);
 
+const Eigen::Matrix<Scalar, 8, 8>& getHeatTemplateMatrix(void);
+
+void initHeatTemplateMatrix(void);
+
 const Eigen::Matrix<double, 24, 24>& getTemplateMatrixFp64(void);
 
+const Eigen::Matrix<double, 8, 8>& getHeatTemplateMatrixFp64(void);
+
 const Scalar* getTemplateMatrixElements(void);
+
+const Scalar* getHeatTemplateMatrixElements(void);
 
 Scalar* getDeviceTemplateMatrix(void);
 

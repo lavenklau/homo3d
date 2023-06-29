@@ -793,6 +793,17 @@ namespace culib {
 		return nrm;
 #endif
 	}
+	template<typename T, typename Tout=T, int BlockSize = 256>
+	Tout norm(T* in_data, size_t n, Tout* sum_dst = nullptr) {
+		auto gen = [=] __device__(int tid) {
+			T x = in_data[tid];
+			return x * x;
+		};
+		Tout sum = sequence_sum<Tout, decltype(gen), BlockSize>(gen, n, Tout(0));
+		Tout nrm = sqrt(sum);
+		if (sum_dst != nullptr) { cudaMemcpy(sum_dst, &nrm, sizeof(T), cudaMemcpyHostToDevice); }
+		return nrm;
+	}
 
 	template<typename T,typename Tout>
 	T dot(T* pdatax, T* pdatay, T* pdataz, T* qdatax, T* qdatay, T* qdataz, Tout* odata, size_t n, Tout* sum_dst = nullptr) {

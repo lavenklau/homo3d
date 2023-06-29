@@ -55,6 +55,22 @@ __constant__ int gGsCoarseVertexEnd[8];
 __constant__ int gGsFineVertexEnd[8];
 __constant__ int gGsFineCellEnd[8];
 
+
+// heat
+__constant__ float* gUHeat;
+__constant__ float* gFHeat;
+__constant__ float* gRHeat;
+__constant__ float* gUHeatfine;
+__constant__ float* gFHeatfine;
+__constant__ float* gRHeatfine;
+__constant__ float* gUHeatcoarse;
+__constant__ float* gFHeatcoarse;
+__constant__ float* gRHeatcoarse;
+__constant__ float* rxHeatStencil[27];
+__constant__ float* rxHeatCoarseStencil[27];
+__constant__ float* rxHeatFineStencil[27];
+__constant__ double gKHd[8][8];
+
 //__constant__ double* guchar[6][3];
 //__constant__ double* gfchar[6][3];
 __constant__ float* guchar[3];
@@ -112,6 +128,12 @@ void homo::Grid::useGrid_g(void)
 		cudaMemcpyToSymbol(gGsFineCellEnd, fine->gsCellSetEnd, sizeof(gGsFineCellEnd));
 		cudaMemcpyToSymbol(gGsFineVertexReso, fine->gsVertexReso, sizeof(gGsFineVertexReso));
 		cudaMemcpyToSymbol(gGsFineCellReso, fine->gsCellReso, sizeof(gGsFineCellReso));
+
+		// fine grid nodal vectors
+		cudaMemcpyToSymbol(gUHeatfine, &fine->uHeat_g, sizeof(gUHeatfine));
+		cudaMemcpyToSymbol(gFHeatfine, &fine->fHeat_g, sizeof(gFHeatfine));
+		cudaMemcpyToSymbol(gRHeatfine, &fine->rHeat_g, sizeof(gRHeatfine));
+		cudaMemcpyToSymbol(rxHeatFineStencil, fine->heatStencil_g, sizeof(rxHeatFineStencil));
 	}
 	if (Coarse != nullptr) {
 		cudaMemcpyToSymbol(gUcoarse, Coarse->u_g, sizeof(gUcoarse));
@@ -124,6 +146,12 @@ void homo::Grid::useGrid_g(void)
 		cudaMemcpyToSymbol(gGsCoarseVertexReso, Coarse->gsVertexReso, sizeof(gGsCoarseVertexReso));
 		cudaMemcpyToSymbol(gCoarseGridCellReso, Coarse->cellReso.data(), sizeof(gCoarseGridCellReso));
 		cudaMemcpyToSymbol(gGsCoarseCellReso, Coarse->gsCellReso, sizeof(gGsCoarseCellReso));
+
+		// coarse grid nodal vectors
+		cudaMemcpyToSymbol(gUHeatcoarse, &Coarse->uHeat_g, sizeof(gUHeatcoarse));
+		cudaMemcpyToSymbol(gFHeatcoarse, &Coarse->fHeat_g, sizeof(gFHeatcoarse));
+		cudaMemcpyToSymbol(gRHeatcoarse, &Coarse->rHeat_g, sizeof(gRHeatcoarse));
+		cudaMemcpyToSymbol(rxHeatCoarseStencil, Coarse->heatStencil_g, sizeof(rxHeatCoarseStencil));
 	}
 	cudaMemcpyToSymbol(rxstencil, stencil_g, sizeof(rxstencil));
 	cudaMemcpyToSymbol(gGridCellReso, cellReso.data(), sizeof(gGridCellReso));
@@ -1306,7 +1334,7 @@ __global__ void update_residual_otf_kernel_1(
 	
 	float KeU[3] = { 0. };
 
-	if (!fiction) gR[0][vid] = KE[0][0];
+	// if (!fiction) gR[0][vid] = KE[0][0];
 
 	int elementId = -1;
 	if (!fiction) elementId = indexer.neighElement(warpId, gsCellEnd, gsCellReso).getId();
@@ -1934,6 +1962,10 @@ void homo::Grid::v3_rand(float* v[3], float low, float upp, int len /*= -1*/)
 	randArray(v, 3, len, low, upp);
 }
 
+void homo::Grid::v1_rand(float *v, float low, float upp, int len) {
+	if (len == -1) len = n_gsvertices();
+	randArray(&v, 1, len, low, upp);
+}
 
 template<typename T, int BlockSize = 256>
 __global__ void v3_diffnorm_kernel(devArray_t<T*, 3> vlist, devArray_t<T*, 3> ulist, T* p_out, size_t len) {
@@ -2013,6 +2045,11 @@ void Grid::v3_reset(float* v[3], int len /*= -1*/)
 		cudaMemset(v[i], 0, sizeof(float) * len);
 	}
 	cudaDeviceSynchronize();
+}
+
+void Grid::v1_reset(float* v, float val, int len /*= -1*/) {
+	if (len < 0) len = n_gsvertices();
+	init_array(v, val, len);
 }
 
 void Grid::v3_copy(float* dst[3], float* src[3], int len /*= -1*/)
@@ -2418,6 +2455,12 @@ void uploadTemplaceMatrix(const double* ke, float penal) {
 	cudaMemcpyToSymbol(exp_penal, &penal, sizeof(float));
 }
 
+void uploadHeatTemplaceMatrix(const double* kH) {
+	float fkH[8 * 8];
+	for (int i = 0; i < 8 * 8; i++) fkH[i] = kH[i];
+	cudaMemcpyToSymbol(gKHd, kH, sizeof(double) * 8 * 8);
+}
+
 void uploadTemplateLameMatrix(const char* kelam72, const char* kemu72, float Lam, float Mu) {
 	short2 lammu[24][24];
 	for (int i = 0; i < 24; i++) {
@@ -2691,6 +2734,14 @@ void homo::Grid::enforce_period_stencil(bool additive)
 	}
 	pad_vertex_data_imp<glm::mat3, 27>(stencil_g, cellReso, vertflag);
 #endif
+}
+
+void homo::Grid::enforce_period_heat_stencil(bool additive) {
+	useGrid_g();
+	for (int i = 0; i < 27; i++) {
+		enforce_period_vertex(heatStencil_g[i], additive);
+	}
+	pad_vertex_data_imp<float, 27>(heatStencil_g, cellReso, vertflag);
 }
 
 template<typename Flag>
@@ -3014,8 +3065,8 @@ void homo::Grid::test(void)
 	//exit(0);
 }
 
-template<typename T>
-__global__ void enforce_period_boundary_vertex_kernel(int siz, devArray_t<T*, 3> v, VertexFlags* vflags, bool additive = false) {
+template<typename T, int N>
+__global__ void enforce_period_boundary_vertex_kernel(int siz, devArray_t<T*, N> v, VertexFlags* vflags, bool additive = false) {
 	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
 	if (tid >= siz) return;
 	int pos[3] = { -2,-2,-2 };
@@ -3047,11 +3098,9 @@ __global__ void enforce_period_boundary_vertex_kernel(int siz, devArray_t<T*, 3>
 	} while (0);
 	if (pos[0] <= -2 || pos[1] <= -2 || pos[2] <= -2) return;
 
-	//if (pos[0] == 0 && pos[1] == 7 && pos[2] == 0) debug = true;
-
 	int gsid = lexi2gs(pos, gGsVertexReso, gGsVertexEnd);
 	VertexFlags vflag = vflags[gsid];
-	T val[3] = { /*v[0][gsid],v[1][gsid],v[2][gsid]*/ };
+	T val[N] = { /*v[0][gsid],v[1][gsid],v[2][gsid]*/ };
 	int op_ids[8] = { -1 ,-1,-1,-1, -1 ,-1,-1,-1 };
 	{
 		// sum opposite 
@@ -3069,7 +3118,7 @@ __global__ void enforce_period_boundary_vertex_kernel(int siz, devArray_t<T*, 3>
 					if (k) op_pos[2] += ereso[2];
 					int op_id = lexi2gs(op_pos, gGsVertexReso, gGsVertexEnd);
 					op_ids[i * 4 + j * 2 + k] = op_id;
-					if (additive) for (int m = 0; m < 3; m++) val[m] += v[m][op_id];
+					if (additive) for (int m = 0; m < N; m++) val[m] += v[m][op_id];
 				}
 			}
 		}
@@ -3080,12 +3129,12 @@ __global__ void enforce_period_boundary_vertex_kernel(int siz, devArray_t<T*, 3>
 	for (int i = 0; i < 8; i++) {
 		if (op_ids[i] != -1) {
 			if (additive)
-				for (int j = 0; j < 3; j++) v[j][op_ids[i]] = val[j];
+				for (int j = 0; j < N; j++) v[j][op_ids[i]] = val[j];
 			else 
-				for (int j = 0; j < 3; j++) v[j][op_ids[i]] = v[j][gsid];
+				for (int j = 0; j < N; j++) v[j][op_ids[i]] = v[j][gsid];
 		}
 	}
-	if (additive) { for (int j = 0; j < 3; j++) v[j][gsid] = val[j]; }
+	if (additive) { for (int j = 0; j < N; j++) v[j][gsid] = val[j]; }
 
 }
 template<typename T, int N>
@@ -3286,42 +3335,36 @@ __global__ void enforce_period_boundary_vertex_aos_kernel(int siz, VecIter v, Ve
 
 }
 
-void homo::Grid::enforce_period_vertex(double* v[3], bool additive /*= false*/)
+template <typename T, int N>
+void enforce_period_vertex_imp(T *v[N], std::array<int, 3> cellReso, VertexFlags *vertflag, bool additive /*= false*/)
 {
-	int nvdup = cellReso[0] * cellReso[1]
-		+ cellReso[1] * (cellReso[2] - 1)
-		+ (cellReso[0] - 1) * (cellReso[2] - 1);
-	devArray_t<double*, 3> varr{ v[0],v[1],v[2] };
+	int nvdup = cellReso[0] * cellReso[1] + cellReso[1] * (cellReso[2] - 1) + (cellReso[0] - 1) * (cellReso[2] - 1);
+	devArray_t<T *, N> varr;
+	for (int i = 0; i < N; i++)
+		varr[i] = v[i];
 	size_t grid_size, block_size;
 	make_kernel_param(&grid_size, &block_size, nvdup, 256);
-	enforce_period_boundary_vertex_kernel << <grid_size, block_size >> > (nvdup, varr, vertflag, additive);
+	enforce_period_boundary_vertex_kernel<<<grid_size, block_size>>>(nvdup, varr, vertflag, additive);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 }
 
+void homo::Grid::enforce_period_vertex(double* v[3], bool additive /*= false*/)
+{
+	enforce_period_vertex_imp<double, 3>(v, cellReso, vertflag, additive);
+}
+
 void homo::Grid::enforce_period_vertex(glm::mat3* v, bool additive /*= false*/) {
-	int nvdup = cellReso[0] * cellReso[1]
-		+ cellReso[1] * (cellReso[2] - 1)
-		+ (cellReso[0] - 1) * (cellReso[2] - 1);
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, nvdup, 256);
-	enforce_period_boundary_vertex_aos_kernel << <grid_size, block_size >> > (nvdup, v, vertflag, additive);
-	cudaDeviceSynchronize();
-	cuda_error_check;
+	enforce_period_vertex_imp<glm::mat3, 1>(&v, cellReso, vertflag, additive);
 }
 
 void homo::Grid::enforce_period_vertex(float* v[3], bool additive /*= false*/)
 {
-	int nvdup = cellReso[0] * cellReso[1]
-		+ cellReso[1] * (cellReso[2] - 1)
-		+ (cellReso[0] - 1) * (cellReso[2] - 1);
-	devArray_t<float*, 3> varr{ v[0],v[1],v[2] };
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, nvdup, 256);
-	enforce_period_boundary_vertex_kernel << <grid_size, block_size >> > (nvdup, varr, vertflag, additive);
-	cudaDeviceSynchronize();
-	cuda_error_check;
-	
+	enforce_period_vertex_imp<float, 3>(v, cellReso, vertflag, additive);
+}
+
+void homo::Grid::enforce_period_vertex(float *v, bool additive) {
+	enforce_period_vertex_imp<float, 1>(&v, cellReso, vertflag, additive);
 }
 
 template<typename T>
@@ -3563,6 +3606,11 @@ __global__ void pad_vertex_data_aos_kernel(int nvfacepad, int nvedgepadd, VecIte
 void homo::Grid::pad_vertex_data(double* v[3])
 {
 	pad_vertex_data_imp<double, 3>(v, cellReso, vertflag);
+}
+
+void homo::Grid::pad_vertex_data(float* v)
+{
+	pad_vertex_data_imp<float, 1>(&v, cellReso, vertflag);
 }
 
 void homo::Grid::pad_vertex_data(glm::mat3* v) {

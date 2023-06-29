@@ -5,6 +5,7 @@
 #include <iomanip>
 
 extern void uploadTemplaceMatrix(const double* ke, float penal);
+extern void uploadHeatTemplaceMatrix(const double* kH);
 void uploadTemplateLameMatrix(const char* kelam72, const char* kemu72, float Lam, float Mu);
 
 std::string outpath = "C:/Users/zhangdi/Documents/temp/homo/";
@@ -56,7 +57,11 @@ void homo::Homogenization::build(cfg::HomoConfig homconfig)
 
 	initTemplateMatrix(1, getMem(), config.youngsModulu, config.poissonRatio);
 
+	initHeatTemplateMatrix();
+
 	uploadTemplaceMatrix(getTemplateMatrixFp64().data(), power_penal);
+
+	uploadHeatTemplaceMatrix(getHeatTemplateMatrixFp64().data());
 
 	auto E = config.youngsModulu;
 	auto v = config.poissonRatio;
