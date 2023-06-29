@@ -943,20 +943,28 @@ void homo::Homogenization::Sensitivity(float dC[6][6], float* sens, int pitchT, 
 	}
 }
 
+extern void checkStencilMatrixSym(homo::Grid &g);
 
 void homo::MG::test_heat_fem(void) {
 	// todo : set heat conductivity
 	grids[0]->v1_rand(grids[0]->rhoHeat_g, 0.2, 1, grids[0]->n_gscells());
 	// todo : heat source
-	grids[0]->v1_reset(grids[0]->fHeat_g, 1);
+	printf("reseting intial heat force\n");
+	grids[0]->v1_rand(grids[0]->fHeat_g, -1, 1);
 	// todo : set your own sink nodes
+	printf("seting sink nodes\n");
 	grids[0]->setSinkNodes();
 	updateHeatStencils();
+	printf("checking stencil symmetriy...\n");
+	// checkStencilMatrixSym(*grids[FLAGS_N]);
+	printf("finished\n");
 	double rel = 1;
-	for (int iter = 0; iter < 200 && rel > 1e-2; iter++) {
+	for (int iter = 0; iter < 50 && rel > 1e-2; iter++) {
+		// printf("iter %d v-cycle\n", iter);
 		v_cycle_heat();
+		// printf("relative residual...\n");
 		rel = grids[0]->relative_residual_heat();
-		printf("iter %04d : rel %.4e       \r", rel);
+		printf("iter %04d : rel %.4e       \n", iter, rel);
 	}
 	exit(0);
 }

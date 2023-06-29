@@ -229,7 +229,7 @@ struct Grid {
 
 	bool solveHostEquationHeat(void);
 
-	bool setSinkNodes(void);
+	void setSinkNodes(void);
 
 	void testCoarsestModes(void);
 
@@ -410,10 +410,12 @@ struct Grid {
 	enum LexiType { VERTEX, CELL };
 	void lexi2gsorder(float* src, float* dst, LexiType type_, bool lexipadded = false);
 	void lexiStencil2gsorder(void);
+	void lexiHeatStencil2gsorder(void);
 	void enforce_period_stencil(bool additive);
 	void enforce_period_heat_stencil(bool additive);
 	//void gather_boundary_force(double* f[3]);
 	void enforce_period_boundary(float* v[3], bool additive = false);
+	void enforce_period_boundary(float* v, bool additive = false);
 	void enforce_dirichlet_boundary(float* v[3]);
 	void enforce_dirichlet_stencil(void);
 	void enforce_period_vertex(double* v[3], bool additive = false);

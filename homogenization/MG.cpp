@@ -718,7 +718,7 @@ void homo::MG::v_cycle_heat(float w_SOR /*= 1.f*/, int pre /*= 1*/, int post /*=
 		}
 		else
 		{
-			grids[i]->gs_relaxation(w_SOR);
+			grids[i]->gs_relaxation_heat(w_SOR);
 		}
 	}
 

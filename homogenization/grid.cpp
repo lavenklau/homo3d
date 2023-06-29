@@ -392,8 +392,8 @@ bool homo::Grid::solveHostEquationHeat(void)
 #endif
 	eigen2ConnectedMatlab("b", b);
 
-	Eigen::Matrix<double, -1, 1> x = hostBiCGSolver.solve(b);
-	if (hostBiCGSolver.info() != Eigen::Success) {
+	Eigen::Matrix<double, -1, 1> x = hostBiCGSolverHeat.solve(b);
+	if (hostBiCGSolverHeat.info() != Eigen::Success) {
 		printf("\033[31mhost equation failed to solve\033[0m\n");
 		return false;
 	}
@@ -1212,6 +1212,12 @@ void homo::Grid::enforce_period_boundary(float* v[3], bool additive /*= false*/)
 	pad_vertex_data(v);
 }
 
+void homo::Grid::enforce_period_boundary(float *v, bool additive)
+{
+	enforce_period_vertex(v, additive);
+	pad_vertex_data(v);
+}
+
 void homo::Grid::test_gs_relaxation(void)
 {
 	useGrid_g();
@@ -1453,6 +1459,7 @@ void homo::Grid::restrict_stencil_arround_dirichelt_boundary(void) {
 
 void homo::Grid::assembleHeatHostMatrix(void) {
 	KHeathost = heatStencil2matrix();
+	KHeathost = (KHeathost + Eigen::SparseMatrix<double>(KHeathost.transpose())).eval() / 2;
 	eigen2ConnectedMatlab("Khost", KHeathost);
 	hostBiCGSolverHeat.compute(KHeathost);
 	// init translation base
@@ -1472,12 +1479,13 @@ void homo::Grid::assembleHeatHostMatrix(void) {
 
 	// DEBUG
 	if (1) {
+		std::cout << "|KT| = " << fk.norm() << ", |KT-KT'| = " << (fk - fk.transpose()).norm() << "\n";
 		Eigen::Matrix<double, -1, 1> bhost(KHeathost.rows(), 1);
 		bhost.setRandom();
 		bhost = bhost - transBaseHeat * (transBaseHeat.transpose() * bhost);
-		Eigen::VectorXd x = hostBiCGSolver.solve(bhost);
-		if (hostBiCGSolver.info() != Eigen::Success) {
-			printf("\033[31m[Heat] Solver test failed, err = %d\033[0m\n", int(hostBiCGSolver.info()));
+		Eigen::VectorXd x = hostBiCGSolverHeat.solve(bhost);
+		if (hostBiCGSolverHeat.info() != Eigen::Success) {
+			printf("\033[31m[Heat] Solver test failed, err = %d\033[0m\n", int(hostBiCGSolverHeat.info()));
 		}
 	}
 }

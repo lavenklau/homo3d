@@ -149,3 +149,8 @@ std::string homo::Homogenization::getName(void)
 }
 
 
+void checkStencilMatrixSym(homo::Grid& g) {
+	auto K = g.heatStencil2matrix();
+	Eigen::Matrix<double, -1, -1> K1(K);
+	std::cout << "|K1| = " << K1.norm() << ", |K1-K1'| = " << (K1 - K1.transpose()).norm() << std::endl;
+}

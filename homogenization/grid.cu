@@ -117,6 +117,12 @@ void homo::Grid::useGrid_g(void)
 	cudaMemcpyToSymbol(gU, u_g, sizeof(gU));
 	cudaMemcpyToSymbol(gF, f_g, sizeof(gF));
 	cudaMemcpyToSymbol(gR, r_g, sizeof(gR));
+
+	// heat nodal vectors
+	cudaMemcpyToSymbol(gUHeat, &uHeat_g, sizeof(gUHeat));
+	cudaMemcpyToSymbol(gFHeat, &fHeat_g, sizeof(gFHeat));
+	cudaMemcpyToSymbol(gRHeat, &rHeat_g, sizeof(gRHeat));
+
 	if (fine != nullptr) {
 		cudaMemcpyToSymbol(gUfine, fine->u_g, sizeof(gUfine));
 		cudaMemcpyToSymbol(gFfine, fine->f_g, sizeof(gFfine));
@@ -158,6 +164,9 @@ void homo::Grid::useGrid_g(void)
 	cudaMemcpyToSymbol(gGsVertexEnd, gsVertexSetEnd, sizeof(gGsVertexEnd));
 	cudaMemcpyToSymbol(gGsCellEnd, gsCellSetEnd, sizeof(gGsCellEnd));
 	cudaMemcpyToSymbol(gGsVertexReso, gsVertexReso, sizeof(gGsVertexReso));
+
+	// current grid heat stencil
+	cudaMemcpyToSymbol(rxHeatStencil, heatStencil_g, sizeof(rxHeatStencil));
 
 	if (is_root) {
 		// cudaMemcpyToSymbol(guchar, uchar_g, sizeof(guchar));
@@ -2552,7 +2561,8 @@ void homo::Grid::lexi2gsorder(float* src, float* dst, LexiType type_, bool lexip
 	}
 }
 
-__global__ void lexiStencil2gsorder_kernel(int nv, const glm::mat3* src, glm::mat3* dst) {
+template<typename T>
+__global__ void lexiStencil2gsorder_kernel(int nv, const T* src, T* dst) {
 	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
 	if (tid >= nv) return;
 	int vpos[3] = {
@@ -2564,24 +2574,33 @@ __global__ void lexiStencil2gsorder_kernel(int nv, const glm::mat3* src, glm::ma
 	dst[gsid] = src[tid];
 }
 
-void homo::Grid::lexiStencil2gsorder(void)
-{
-	auto tmpname = getMem().addBuffer(n_gsvertices() * sizeof(glm::mat3));
-	glm::mat3* tmp = getMem().getBuffer(tmpname)->data<glm::mat3>();
+template<typename T, int N>
+void lexiStencil2gsorder_imp(size_t n_gsvert, std::array<int, 3> cellReso, T* stencilList[]) {
+	auto tmpname = getMem().addBuffer(n_gsvert * sizeof(T));
+	T* tmp = getMem().getBuffer(tmpname)->data<T>();
 	int nv = (cellReso[0] + 1) * (cellReso[1] + 1) * (cellReso[2] + 1);
-	for (int i = 0; i < 27; i++) {
-		cudaMemset(tmp, 0, sizeof(glm::mat3) * n_gsvertices());
+	for (int i = 0; i < N; i++) {
+		cudaMemset(tmp, 0, sizeof(T) * n_gsvert);
 		//lexi2gsorder(stencil_g[i][j], tmp, VERTEX);
 		size_t grid_size, block_size;
 		make_kernel_param(&grid_size, &block_size, nv, 512);
-		lexiStencil2gsorder_kernel << <grid_size, block_size >> > (nv, stencil_g[i], tmp);
+		lexiStencil2gsorder_kernel << <grid_size, block_size >> > (nv, stencilList[i], tmp);
 		cudaDeviceSynchronize();
 		cuda_error_check;
-		cudaMemcpy(stencil_g[i], tmp, sizeof(glm::mat3) * n_gsvertices(), cudaMemcpyDeviceToDevice);
+		cudaMemcpy(stencilList[i], tmp, sizeof(T) * n_gsvert, cudaMemcpyDeviceToDevice);
 	}
 	getMem().deleteBuffer(tmpname);
 	cuda_error_check;
-}	
+}
+
+void homo::Grid::lexiStencil2gsorder(void) {
+	lexiStencil2gsorder_imp<glm::mat3, 27>(n_gsvertices(), cellReso, stencil_g);
+}
+
+void homo::Grid::lexiHeatStencil2gsorder(void)
+{
+	lexiStencil2gsorder_imp<float, 27>(n_gsvertices(), cellReso, heatStencil_g);
+}
 
 //template<int BlockSize = 256>
 //__global__ void enforce_period_stencil_stage_kernel(void) {

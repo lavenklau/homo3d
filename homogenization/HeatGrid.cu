@@ -6,6 +6,16 @@
 #include <fstream>
 #include "homoCommon.cuh"
 
+#undef cuda_error_check
+
+#define cuda_error_check do{ \
+	auto err = cudaPeekAtLastError(); \
+	if (err != cudaSuccess) { \
+		printf("\x1b[31mCUDA error occured at line %d in file %s, error [%d] type %s \x1b[0m\n", __LINE__,__FILE__, int(err), cudaGetErrorName(err));\
+		exit(0);\
+	} \
+}while(0)
+
 using namespace homo;
 using namespace culib;
 
@@ -150,6 +160,7 @@ __global__ void gs_relaxation_heat_otf_kernel(
 #endif
 		// if dirichlet boundary;
 		if (vflag.is_sink()) { u = 0; }
+		else { gFHeat[vid] = 0; }
 		// update
 		gUHeat[vid] = u;
 	}
@@ -276,10 +287,10 @@ void homo::Grid::gs_relaxation_heat(float w_SOR /*= 1.f*/, int times_ /*= 1*/)
 			}
 			cudaDeviceSynchronize();
 			cuda_error_check;
-			enforce_period_boundary(u_g);
+			enforce_period_boundary(uHeat_g);
 		}
 	}
-	enforce_period_boundary(u_g);
+	enforce_period_boundary(uHeat_g);
 	//pad_vertex_data(u_g);
 	cudaDeviceSynchronize();
 	cuda_error_check;
@@ -489,7 +500,7 @@ void homo::Grid::update_residual_heat(void)
 		cudaDeviceSynchronize();
 		cuda_error_check;
 	}
-	pad_vertex_data(r_g);
+	pad_vertex_data(rHeat_g);
 }
 
 
@@ -568,7 +579,7 @@ void homo::Grid::prolongate_correction_heat(void)
 	prolongate_correction_heat_kernel_1 << <grid_size, block_size >> > (is_root, nv_fine, vflags, vcoarseFlags, gsVertexEnd, gsCoarseVertexEnd);
 	cudaDeviceSynchronize();
 	cuda_error_check;
-	enforce_period_boundary(u_g);
+	enforce_period_boundary(uHeat_g);
 }
 
 
@@ -644,7 +655,7 @@ __global__ void restrict_stencil_heat_otf_aos_kernel_1(
 					for (int ev = 0; ev < 8; ev++) {
 						int evpos[3] = {e_fine_pos[0] + ev % 2, e_fine_pos[1] + ev / 2 % 2, e_fine_pos[2] + ev / 4};
 						int evid = lexi2gs(evpos, gGsFineVertexReso, gGsFineVertexEnd);
-						isSink[ev] = vflags[ev].is_sink();
+						isSink[ev] = vflags[evid].is_sink();
 					}
 					//auto eflag = eflags[eid];
 					float rho_penal = rhoheat[eid];
@@ -678,7 +689,8 @@ __global__ void restrict_stencil_heat_otf_aos_kernel_1(
 							if (isSink[e_vi] && e_vi == e_vj) {
 								st += (wi * wj) * KE[0][0] * ds;
 							}
-							else{
+							else
+							{
 								st += (wi * wj) * KE[e_vi][e_vj];
 							}
 						}
@@ -787,7 +799,7 @@ void homo::Grid::restrict_stencil_heat(void)
 		useGrid_g();
 		size_t grid_size, block_size;
 		for (int i = 0; i < 27; i++) {
-			cudaMemset(stencil_g[i], 0, sizeof(glm::mat3) * n_gsvertices());
+			cudaMemset(heatStencil_g[i], 0, sizeof(float) * n_gsvertices());
 		}
 		cudaDeviceSynchronize();
 		cuda_error_check;
@@ -797,8 +809,8 @@ void homo::Grid::restrict_stencil_heat(void)
 		cudaDeviceSynchronize();
 		cuda_error_check;
 		useGrid_g();
-		lexiStencil2gsorder();
-		enforce_period_stencil(true);
+		lexiHeatStencil2gsorder();
+		enforce_period_heat_stencil(true);
 	}
 	else {
 		useGrid_g();
@@ -813,7 +825,7 @@ void homo::Grid::restrict_stencil_heat(void)
 		cudaDeviceSynchronize();
 		cuda_error_check;
 		//stencil2matlab("Khost");
-		enforce_period_stencil(false);
+		enforce_period_heat_stencil(false);
 	}
 }
 
@@ -911,7 +923,7 @@ void homo::Grid::restrict_residual_heat(void) {
     restrict_residual_kernel_1<<<grid_size, block_size>>>(nv, vflags, vfineflags, gsVertexEnd, gsFineVertexEnd);
     cudaDeviceSynchronize();
     cuda_error_check;
-    pad_vertex_data(f_g);
+    pad_vertex_data(fHeat_g);
 }
 
 void homo::Grid::reset_displacement_heat(void) {
@@ -927,23 +939,27 @@ void homo::Grid::reset_force_heat(void){
 }
 
 double homo::Grid::relative_residual_heat(void) {
-	culib::norm(rHeat_g, n_gsvertices()) / culib::norm(fHeat_g, n_gsvertices());
+	return culib::norm(rHeat_g, n_gsvertices()) / (culib::norm(fHeat_g, n_gsvertices())+1e-30);
 }
 
 
-__global__ void setSinkNodes_kernel(int nv, VertexFlags* vflags) {
+__global__ void setSinkNodes_kernel(int nv, float* vhint, VertexFlags* vflags) {
 	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
 	if (tid >= nv) return;
-	if(vflags[tid].is_dirichlet_boundary()) {
+	// if(vflags[tid].is_dirichlet_boundary()) {
+	// 	vflags[tid].set_sink();
+	// }
+	if (vhint[tid] < 0.01) {
 		vflags[tid].set_sink();
 	}
 }
 
 // ToDO: set your own sink nodes
-bool homo::Grid::setSinkNodes(void) {
+void homo::Grid::setSinkNodes(void) {
+	v1_rand(rHeat_g, 0, 1);
 	size_t grid_size, block_size;
 	make_kernel_param(&grid_size, &block_size, n_gsvertices(), 512);
-	setSinkNodes_kernel<<<grid_size, block_size>>>(n_gsvertices(), vertflag);
+	setSinkNodes_kernel<<<grid_size, block_size>>>(n_gsvertices(), rHeat_g, vertflag);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 }
