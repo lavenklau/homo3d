@@ -699,6 +699,21 @@ void homo::Grid::readDisplacement(const std::string& fname)
 	v3_read(fname, u_g);
 }
 
+void homo::Grid::heatForce2matlab(std::string nam)
+{
+	v1_toMatlab(nam, fHeat_g);
+}
+
+void homo::Grid::heatResidual2matlab(std::string nam)
+{
+	v1_toMatlab(nam, rHeat_g);
+}
+
+void homo::Grid::heatDisplacement2matlab(std::string nam)
+{
+	v1_toMatlab(nam, uHeat_g);
+}
+
 void homo::Grid::v3_upload(float* dev[3], float* hst[3])
 {
 	for (int i = 0; i < 3; i++) {
@@ -723,6 +738,14 @@ void homo::Grid::v3_toMatlab(const std::string& mname, double* v[3], int len /*=
 	}
 	eigen2ConnectedMatlab(mname, vmat);
 #endif
+}
+
+void homo::Grid::v1_toMatlab(const std::string& mname, float* v, int len /*= -1*/)
+{
+	if (len == -1) len = n_gsvertices();
+	Eigen::Matrix<float, -1, 1> vmat(len);
+		cudaMemcpy(vmat.data(), v, sizeof(float) * len, cudaMemcpyDeviceToHost);
+	eigen2ConnectedMatlab(mname, vmat);
 }
 
 void homo::Grid::v3_toMatlab(const std::string& mname, float* v[3], int len /*= -1*/)

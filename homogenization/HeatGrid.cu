@@ -159,8 +159,10 @@ __global__ void gs_relaxation_heat_otf_kernel(
         u = w * (gFHeat[vid] - KeU) / Ks + (1 - w) * u;
 #endif
 		// if dirichlet boundary;
-		if (vflag.is_sink()) { u = 0; }
-		else { gFHeat[vid] = 0; }
+		if (vflag.is_sink()) {
+			u = 0; 
+			gFHeat[vid] = 0;
+		}
 		// update
 		gUHeat[vid] = u;
 	}
@@ -686,8 +688,10 @@ __global__ void restrict_stencil_heat_otf_aos_kernel_1(
 								(coarseRatio[1] - vij_off[1]) *
 								(coarseRatio[2] - vij_off[2]) / pr;
 							if (debug) printf("    vij_off = (%d, %d, %d), wi = %f\n", vij_off[0], vij_off[1], vij_off[2], wj);
-							if (isSink[e_vi] && e_vi == e_vj) {
-								st += (wi * wj) * KE[0][0] * ds;
+							if (isSink[e_vi] || isSink[e_vj]) {
+								if (e_vi == e_vj) {
+									st += (wi * wj) * KE[0][0] * ds;
+								}
 							}
 							else
 							{
@@ -957,6 +961,7 @@ __global__ void setSinkNodes_kernel(int nv, float* vhint, VertexFlags* vflags) {
 // ToDO: set your own sink nodes
 void homo::Grid::setSinkNodes(void) {
 	v1_rand(rHeat_g, 0, 1);
+	enforce_period_boundary(rHeat_g, false);
 	size_t grid_size, block_size;
 	make_kernel_param(&grid_size, &block_size, n_gsvertices(), 512);
 	setSinkNodes_kernel<<<grid_size, block_size>>>(n_gsvertices(), rHeat_g, vertflag);

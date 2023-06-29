@@ -342,6 +342,10 @@ struct Grid {
 
 	void sensitivity(int i, int j, float* sens);
 
+	void heatForce2matlab(std::string nam);
+	void heatResidual2matlab(std::string nam);
+	void heatDisplacement2matlab(std::string nam);
+
 	std::vector<VertexFlags> getVertexflags(void);
 
 	std::vector<CellFlags> getCellflags(void);
@@ -365,6 +369,7 @@ struct Grid {
 	void v3_removeT(float* u[3], float tHost[3]);
 	void v3_linear(float a1, float* v1[3], float a2, float* v2[3], float* v[3], int len = -1);
 	void v3_toMatlab(const std::string& mname, double* v[3], int len = -1);
+	void v1_toMatlab(const std::string& mname, float* v, int len = -1);
 	void v3_toMatlab(const std::string& mname, float* v[3], int len = -1);
 	void v3_write(const std::string& filename, float* v[3], int len = -1);
 	void v3_write(const std::string& filename, float* v[3], bool removePeriodDof = false);

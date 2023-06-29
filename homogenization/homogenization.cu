@@ -951,6 +951,7 @@ void homo::MG::test_heat_fem(void) {
 	// todo : heat source
 	printf("reseting intial heat force\n");
 	grids[0]->v1_rand(grids[0]->fHeat_g, -1, 1);
+	grids[0]->enforce_period_boundary(grids[0]->fHeat_g, false);
 	// todo : set your own sink nodes
 	printf("seting sink nodes\n");
 	grids[0]->setSinkNodes();
@@ -959,10 +960,8 @@ void homo::MG::test_heat_fem(void) {
 	// checkStencilMatrixSym(*grids[FLAGS_N]);
 	printf("finished\n");
 	double rel = 1;
-	for (int iter = 0; iter < 50 && rel > 1e-2; iter++) {
-		// printf("iter %d v-cycle\n", iter);
+	for (int iter = 0; iter < 50 && rel > 1e-5; iter++) {
 		v_cycle_heat();
-		// printf("relative residual...\n");
 		rel = grids[0]->relative_residual_heat();
 		printf("iter %04d : rel %.4e       \n", iter, rel);
 	}
