@@ -1965,6 +1965,18 @@ float Grid::v3_norm(float* v[3], bool removePeriodDof /*= false*/, int len /*= -
 	}
 }
 
+float Grid::v1_norm(float* v, bool removePeriodDof , int len ) {
+	if (len < 0) len = n_gsvertices();
+	if (!removePeriodDof) {
+		double nrm = norm(v, len);
+		cuda_error_check;
+		return nrm;
+	} else {
+		double n2 = v1_dot(v, v, removePeriodDof);
+		return sqrt(n2);
+	}
+}
+
 void homo::Grid::v3_rand(float* v[3], float low, float upp, int len /*= -1*/)
 {
 	if (len == -1) len = n_gsvertices();
@@ -3861,10 +3873,10 @@ void homo::Grid::v3_wave(float* u[3], const std::array<float, 3>& radi)
 	cuda_error_check;
 }
 
-template<typename T, int BlockSize = 256>
+template<typename T, int N, int BlockSize = 256>
 __global__ void v3_dot_kernel(int nv,
 	VertexFlags* vflags,
-	devArray_t<T*, 3> vlist, devArray_t<T*, 3> ulist, T* p_out, bool removePeriodDof = false
+	devArray_t<T*, N> vlist, devArray_t<T*, N> ulist, T* p_out, bool removePeriodDof = false
 ) {
 
 	__shared__  T blocksum[BlockSize / 32];
@@ -3885,9 +3897,8 @@ __global__ void v3_dot_kernel(int nv,
 		if (vflag.is_fiction() ) continue;
 		if (removePeriodDof && (vflag.is_period_padding() || vflag.is_max_boundary())) continue;
 
-		T v[3] = { vlist[0][vid], vlist[1][vid], vlist[2][vid] };
-		T u[3] = { ulist[0][vid], ulist[1][vid], ulist[2][vid] };
-		T uv = v[0] * u[0] + v[1] * u[1] + v[2] * u[2];
+		T uv = 0;
+		for (int i = 0; i < N; i++) uv += vlist[i][vid] * ulist[i][vid];
 		bsum += uv;
 	}
 
@@ -3946,6 +3957,32 @@ float homo::Grid::v3_dot(float* v[3], float* u[3], bool removePeriodDof /*= fals
 		cuda_error_check;
 		return s;
 	}
+}
+
+float homo::Grid::v1_dot(float* v, float* u, bool removePeriodDof, int len) {
+	if (len == -1) len = n_gsvertices();
+	int szTemp = len * sizeof(float) / 100;
+	if (!removePeriodDof) {
+		double result = dot(v, u, len);
+		cuda_error_check;
+		return result;
+	}
+	else {
+		devArray_t<float*, 1> vlist{ v };
+		devArray_t<float*, 1> ulist{ u };
+		int nv = n_gsvertices();
+		auto buffer = getTempBuffer(nv / 100 * sizeof(float));
+		float* p_tmp = buffer.template data<float>();
+		size_t grid_size, block_size;
+		int batch = nv;
+		make_kernel_param(&grid_size, &block_size, batch, 256);
+		v3_dot_kernel << <grid_size, block_size >> > (nv, vertflag, vlist, ulist, p_tmp, removePeriodDof);
+		cudaDeviceSynchronize();
+		double s = dump_array_sum(p_tmp, grid_size);
+		cuda_error_check;
+		return s;
+	}
+
 }
 
 void homo::Grid::pad_vertex_data(float* v[3])

@@ -358,10 +358,12 @@ struct Grid {
 
 	void v3_reset(float* v[3], int len = -1);
 	void v1_reset(float* v, float val = 0, int len = -1);
+	void v1_write(std::string vn, float* v, int len = -1);
 	void v3_const(float* v[3], const float v_const[3]);
 	void v3_rand(float* v[3], float low, float upp, int len = -1);
 	void v1_rand(float* v, float low, float upp, int len = -1);
 	float v3_norm(float* v[3], bool removePeriodDof = false, int len = -1);
+	float v1_norm(float* v, bool removePeriodDof = false, int len = -1);
 	float v3_diffnorm(float* v[3], float* u[3], int len = -1);
 	void v3_copy(float* dst[3], float* src[3], int len = -1);
 	void v3_upload(float* dev[3], float* hst[3]);
@@ -378,6 +380,7 @@ struct Grid {
 	void v3_create(float* v[3], int len = -1);
 	void v3_destroy(float* v[3]);
 	float v3_dot(float* v[3], float* u[3], bool removePeriodDof = false, int len = -1);
+	float v1_dot(float* v, float* u, bool removePeriodDof = false, int len = -1);
 	Eigen::Matrix<float, -1, 1> v3_toMatrix(float* u[3], bool removePeriodDof = false);
 	Eigen::Matrix<float, -1, 1> v1_toMatrix(float* u, bool removePeriodDof = false);
 	void v3_fromMatrix(float* u[3], const Eigen::Matrix<float, -1, 1>& b, bool hasPeriodDof = false);

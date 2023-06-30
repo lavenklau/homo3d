@@ -819,7 +819,7 @@ namespace culib {
 	}
 
 	template<typename T>
-	T dot(const T* indata1, const T* indata2, T* dump_buf, size_t n, T* dot_dst = nullptr) {
+	T dot(const T* indata1, const T* indata2, size_t n, T* dot_dst = nullptr) {
 		auto gen = [=] __device__(int tid) {
 			T p = indata1[tid];
 			T q = indata2[tid];

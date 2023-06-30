@@ -949,16 +949,11 @@ void homo::MG::test_heat_fem(void) {
 	// todo : set heat conductivity
 	grids[0]->v1_rand(grids[0]->rhoHeat_g, 0.2, 1, grids[0]->n_gscells());
 	// todo : heat source
-	printf("reseting intial heat force\n");
 	grids[0]->v1_rand(grids[0]->fHeat_g, -1, 1);
 	grids[0]->enforce_period_boundary(grids[0]->fHeat_g, false);
 	// todo : set your own sink nodes
-	printf("seting sink nodes\n");
 	grids[0]->setSinkNodes();
 	updateHeatStencils();
-	printf("checking stencil symmetriy...\n");
-	// checkStencilMatrixSym(*grids[FLAGS_N]);
-	printf("finished\n");
 	double rel = 1;
 	for (int iter = 0; iter < 50 && rel > 1e-5; iter++) {
 		v_cycle_heat();

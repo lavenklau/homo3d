@@ -1480,6 +1480,15 @@ void homo::Grid::restrict_stencil_arround_dirichelt_boundary(void) {
 	}
 }
 
+void homo::Grid::v1_write(std::string vn, float* v, int len /*= -1*/)
+{
+	if (len == -1) len = n_gsvertices();
+	std::ofstream ofs(vn, std::ios::binary);
+	std::vector<float> vlist(len);
+	cudaMemcpy(vlist.data(), v, sizeof(float) * vlist.size(), cudaMemcpyDeviceToHost);
+	ofs.write((const char*)vlist.data(), vlist.size() * sizeof(float));
+}
+
 void homo::Grid::assembleHeatHostMatrix(void) {
 	KHeathost = heatStencil2matrix();
 	KHeathost = (KHeathost + Eigen::SparseMatrix<double>(KHeathost.transpose())).eval() / 2;

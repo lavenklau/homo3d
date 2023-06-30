@@ -88,4 +88,21 @@ void readVectors(const std::string& str, std::vector<T>(&vecs)[N]) {
 	}
 	return;
 }
+
+template<typename T>
+void readVector(const std::string& str, std::vector<T>& vec) {
+	std::ifstream ifs(str, std::ios::binary | std::ios::ate);
+	if (!ifs) {
+		printf("\033[31mopen file %s failed\033[0m\n", str.c_str());
+		return;
+	}
+	size_t fsize = ifs.tellg();
+	int vsize = fsize / sizeof(T);
+	vec.resize(vsize);
+	ifs.seekg(0, std::ios::beg);
+	for (int j = 0; j < vsize; j++) {
+		ifs.read((char*)&vec[j], sizeof(T));
+	}
+	return;
+}
 }
