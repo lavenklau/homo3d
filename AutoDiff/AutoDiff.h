@@ -54,6 +54,7 @@ namespace homo {
 	template<typename opExp_t, typename Scalar> struct pow_exp_t;
 	template<typename opExp_t, typename Scalar> struct ln_exp_t;
 	template<typename opExp_t, typename Scalar> struct exp_exp_t;
+	template<typename opExp_t, typename Scalar> struct sgm_exp_t;
 	template<typename Scalar = double> struct scalar_exp_t;
 	template<typename subVar = void, typename Scalar = double> struct var_exp_t;
 	template<typename Scalar> struct rvar_exp_t;
