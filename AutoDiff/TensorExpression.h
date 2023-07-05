@@ -1297,6 +1297,7 @@ template<typename Arg> constexpr bool is_##TypeName##_v = is_##TypeName<Arg>::va
 			__host_device_func auto &operator()(int k) const { return pdata[k]; }
 		};
 		__host_device_func Scalar eval_imp(void) {
+			opr.eval();
 			auto accs = opr.value().view();
 			auto n_src = accs.size();
 			size_t grid_size, block_size;
