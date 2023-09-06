@@ -14,7 +14,7 @@ This project aims to provide an code framework for efficiently solving the inver
 We have packed dependencies into a [conda](https://docs.conda.io/en/latest/miniconda.html) environment (except CUDA  and compilers), you can create it by:
 
 ```bash
-conda env create -f environment.yaml
+conda env create -f environment.yml
 ```
 
 Then you activate it by:
