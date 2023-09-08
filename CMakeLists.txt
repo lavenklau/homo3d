@@ -114,7 +114,11 @@ target_compile_options(cubin PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:
 	>)
 target_link_libraries(cubin PRIVATE ${CUDA_LIBRARIES})
 target_link_libraries(cubin PRIVATE ${CUDA_DRIVER_LIBRARY})
+if(TARGET glm::glm)
 target_link_libraries(cubin PRIVATE glm::glm)
+else()
+target_link_libraries(cubin PRIVATE glm)
+endif()
 
 file(GLOB cppfiles 
         *.cpp
