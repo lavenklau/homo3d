@@ -68,7 +68,7 @@ optimizing the bulk modulus :
 
 After the optimization finished, the optimized density field is stored in `<prefix>/rho` in OpenVDB format.
 
-3rd party softwares like Rhino or Blender may be used to extract the solid part.
+3rd party softwares like Rhino (with grasshopper plugin [Dendro](https://www.food4rhino.com/en/app/dendro)) or Blender may be used to extract the solid part.
 
 The optimized elastic matrix is stored in `<prefix>/C` in binary format, which is an array of 36 float precision numbers.
 
