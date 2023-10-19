@@ -465,6 +465,17 @@ namespace homo {
 #else
 #endif
 		}
+		void clamp(T low, T upp) {
+			mapInplace([=] __device__(int i, int j, int k, T val) {
+				if(val < low) return low;
+				else if(val > upp) return upp;
+				else if(low <= val && val <=upp) { 
+					return val;
+				}
+				 else {
+					return low;
+				} });
+		}
 		size_t pitch(void) const { return buf->pitch(); }
 		//size_t size(void) { return view().size(); }
 		const TensorView<T> view(void) const {

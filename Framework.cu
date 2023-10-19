@@ -126,7 +126,11 @@ void initDensity(var_tsexp_t<>& rho, cfg::HomoConfig config) {
 		});
 	}
 
+	// symmetrize density field
 	symmetrizeField(rho.value(), config.sym);
+
+	// clamp density value to [rho_min, 1]
+	rho.value().clamp(0.001, 1);
 }
 
 
