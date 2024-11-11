@@ -125,7 +125,7 @@ If you are using this project in your academic research, please include the foll
   author   = "Zhang, Di and Zhai, Xiaoya and Liu, Ligang and Fu, Xiao-Ming",
   journal  = "Structural and Multidisciplinary Optimization",
   volume   =  66,
-  pages    =  207,
+  pages    =  "Article 207",
   month    =  sep,
   year     =  2023
 }
