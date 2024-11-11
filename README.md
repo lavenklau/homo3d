@@ -1,5 +1,6 @@
-![](https://s2.loli.net/2023/06/13/pIOTzngcB4blmN8.png)
 ## An Optimized, Easy-to-use, Open-source GPU Solver for Large-scale Inverse Homogenization Problems
+
+![image-20241111133209991](https://s2.loli.net/2024/11/11/jpC3TzYMWXArNIB.png)
 
 This project aims to provide an code framework for efficiently solving the inverse homogenization problems to design microstructure.  
 
@@ -112,4 +113,22 @@ If you care more about accuracy rather than performance, please checkout the bra
 Other version (branch) such as `mix-fp64fp32` uses a mixed precision scheme and requires less memory.
 
 
+
+## Citation
+
+If you are using this project in your academic research, please include the following citation
+
+```
+@ARTICLE{Zhang2023-ti,
+  title    = "An optimized, easy-to-use, open-source {GPU} solver for
+              large-scale inverse homogenization problems",
+  author   = "Zhang, Di and Zhai, Xiaoya and Liu, Ligang and Fu, Xiao-Ming",
+  journal  = "Structural and Multidisciplinary Optimization",
+  volume   =  66,
+  pages    =  207,
+  month    =  sep,
+  year     =  2023
+}
+
+```
 
