@@ -5,13 +5,13 @@
 
 namespace homo {
 
-	struct MGConfig{
-		int reso[3];
-		bool enableManagedMem = true;
-		std::string namePrefix;
-	};
+struct MGConfig {
+	int reso[3];
+	bool enableManagedMem = true;
+	std::string namePrefix;
+};
 
-struct MG{
+struct MG {
 	// fine to coarse
 	std::vector<std::shared_ptr<Grid>> grids;
 
@@ -44,6 +44,4 @@ struct MG{
 	void test_pcg(void);
 };
 
-
-
-}
+} // namespace homo

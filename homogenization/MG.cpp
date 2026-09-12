@@ -5,17 +5,17 @@
 #include "tictoc.h"
 #include "utils.h"
 
-std::shared_ptr<homo::Grid> homo::MG::getRootGrid(void)
-{
+std::shared_ptr<homo::Grid> homo::MG::getRootGrid(void) {
 	return grids[0];
 }
 
-void homo::MG::build(MGConfig config)
-{
+void homo::MG::build(MGConfig config) {
 	mgConfig = config;
 
 	std::shared_ptr<Grid> rootGrid(new Grid());
-	if (!rootGrid) { throw std::runtime_error("failed to create root Grid"); }
+	if (!rootGrid) {
+		throw std::runtime_error("failed to create root Grid");
+	}
 
 	GridConfig gcon;
 	gcon.enableManagedMem = config.enableManagedMem;
@@ -28,13 +28,15 @@ void homo::MG::build(MGConfig config)
 	// coarse grid until enough
 	auto coarseGrid = rootGrid->coarse2(gcon);
 
-	if (!coarseGrid) { throw std::runtime_error("failed to create coarse Grid"); }
+	if (!coarseGrid) {
+		throw std::runtime_error("failed to create coarse Grid");
+	}
 
 	while (coarseGrid) {
 		grids.push_back(coarseGrid);
 		coarseGrid = coarseGrid->coarse2(gcon);
 	}
-	
+
 	// reset all vectors
 	for (int i = 0; i < grids.size(); i++) {
 		grids[i]->reset_residual();
@@ -43,8 +45,7 @@ void homo::MG::build(MGConfig config)
 	}
 }
 
-void homo::MG::v_cycle(float w_SOR /*= 1.f*/, int pre /*= 1*/, int post /*= 1*/)
-{
+void homo::MG::v_cycle(float w_SOR /*= 1.f*/, int pre /*= 1*/, int post /*= 1*/) {
 	for (int i = 0; i < grids.size(); i++) {
 		if (i != 0) {
 			grids[i - 1]->update_residual();
@@ -69,8 +70,7 @@ void homo::MG::v_cycle(float w_SOR /*= 1.f*/, int pre /*= 1*/, int post /*= 1*/)
 	return /*grids[0]->relative_residual()*/;
 }
 
-void homo::MG::v_cycle_verbose(float w_SOR /*= 1.f*/, int pre /*= 1*/, int post /*= 1*/)
-{
+void homo::MG::v_cycle_verbose(float w_SOR /*= 1.f*/, int pre /*= 1*/, int post /*= 1*/) {
 	int depth = grids.size();
 	depth = 2;
 	for (int i = 0; i < depth; i++) {
@@ -100,21 +100,20 @@ void homo::MG::v_cycle_verbose(float w_SOR /*= 1.f*/, int pre /*= 1*/, int post 
 	grids[0]->update_residual();
 
 	return /*grids[0]->relative_residual()*/;
-
 }
 
-void homo::MG::reset_displacement(void)
-{
+void homo::MG::reset_displacement(void) {
 	for (int i = 0; i < grids.size(); i++) {
 		grids[i]->reset_displacement();
 	}
 }
 
-double homo::MG::solveEquation(double tol /*= 1e-2*/, bool with_guess /*= true*/)
-{
+double homo::MG::solveEquation(double tol /*= 1e-2*/, bool with_guess /*= true*/) {
 	double rel_res = 1;
 	int iter = 0;
-	if (!with_guess) { grids[0]->reset_displacement(); }
+	if (!with_guess) {
+		grids[0]->reset_displacement();
+	}
 #if 1
 	//double* ftmp[3], * u0[3];
 	double fnorm = grids[0]->v3_norm(grids[0]->f_g);
@@ -135,7 +134,8 @@ double homo::MG::solveEquation(double tol /*= 1e-2*/, bool with_guess /*= true*/
 		grids[0]->update_residual();
 		rel_res = grids[0]->relative_residual();
 #endif
-		if (enable_translate_displacement) grids[0]->translateForce(2, grids[0]->u_g);
+		if (enable_translate_displacement)
+			grids[0]->translateForce(2, grids[0]->u_g);
 		rel_res = grids[0]->residual() / (fnorm + 1e-10);
 		if (rel_res > 10 || iter >= 199) {
 			//throw std::runtime_error("numerical failure");
@@ -163,7 +163,9 @@ double homo::MG::solveEquation(double tol /*= 1e-2*/, bool with_guess /*= true*/
 			// write coarsest force
 			gc->v3_write(getPath("berr"), gc->f_g, true);
 			// write coarsest system matrix
-			std::ofstream ofs(getPath("Khosterr")); ofs << gc->Khost; ofs.close();
+			std::ofstream ofs(getPath("Khosterr"));
+			ofs << gc->Khost;
+			ofs.close();
 			// write solved x
 			gc->v3_write(getPath("xerr"), gc->u_g, true);
 			// write gs pos
@@ -192,7 +194,9 @@ double homo::MG::solveEquation(double tol /*= 1e-2*/, bool with_guess /*= true*/
 		printf("rel_res = %4.2lf%%    It.%d       \r", rel_res * 100, iter);
 	}
 	printf("\n");
-	if (iter >= 200) { printf(" - r_rel = %le\n",rel_res); }
+	if (iter >= 200) {
+		printf(" - r_rel = %le\n", rel_res);
+	}
 	//grids[0]->v3_destroy(u0);
 	//grids[0]->v3_destroy(ftmp);
 	grids[0]->array2matlab("errs", errlist.data(), errlist.size());
@@ -202,22 +206,28 @@ double homo::MG::solveEquation(double tol /*= 1e-2*/, bool with_guess /*= true*/
 	return rel_res;
 }
 
-double homo::MG::pcg(void)
-{
+double homo::MG::pcg(void) {
 	using VType = decltype(grids[0]->u_g);
 	VType r, z, x, p, Ap;
 	//grids[0]->v3_create(r);
-	grids[0]->v3_create(z); grids[0]->v3_reset(z);
-	grids[0]->v3_create(x); grids[0]->v3_reset(x);
-	grids[0]->v3_create(p); grids[0]->v3_reset(p);
-	grids[0]->v3_create(Ap); grids[0]->v3_reset(Ap);
+	grids[0]->v3_create(z);
+	grids[0]->v3_reset(z);
+	grids[0]->v3_create(x);
+	grids[0]->v3_reset(x);
+	grids[0]->v3_create(p);
+	grids[0]->v3_reset(p);
+	grids[0]->v3_create(Ap);
+	grids[0]->v3_reset(Ap);
 	// for debug
 	VType b;
-	grids[0]->v3_create(b); grids[0]->v3_reset(b);
+	grids[0]->v3_create(b);
+	grids[0]->v3_reset(b);
 	grids[0]->v3_copy(b, grids[0]->f_g);
 
 	// store r in grids[0]->f_g
-	r[0] = grids[0]->f_g[0]; r[1] = grids[0]->f_g[1]; r[2] = grids[0]->f_g[2];
+	r[0] = grids[0]->f_g[0];
+	r[1] = grids[0]->f_g[1];
+	r[2] = grids[0]->f_g[2];
 
 	double alpha = 0, beta = 0, sum_ = 0;
 
@@ -260,7 +270,7 @@ double homo::MG::pcg(void)
 
 	// update p
 	update_p();
-	
+
 	sum_ = grids[0]->v3_dot(r, z, true);
 	double zTr_last = sum_;
 
@@ -269,7 +279,7 @@ double homo::MG::pcg(void)
 	std::vector<double> errlist;
 
 	int itn = 0;
-	while (itn++ < 1000 && rel_res>1e-2) {
+	while (itn++ < 1000 && rel_res > 1e-2) {
 		compute_Ap(p, Ap);
 
 		//grids[0]->v3_toMatlab("p", p);
@@ -307,7 +317,9 @@ double homo::MG::pcg(void)
 
 		printf("res = %6.4lf%%\  alpha = %.4e\n", rel_res * 100, alpha);
 
-		if (rel_res < 1e-2) { break; }
+		if (rel_res < 1e-2) {
+			break;
+		}
 
 		double vres = precondition(z);
 		//printf("vvres = %6.4lf%%\n", vres * 100);
@@ -338,8 +350,7 @@ double homo::MG::pcg(void)
 	return rel_res;
 }
 
-void homo::MG::updateStencils(void)
-{
+void homo::MG::updateStencils(void) {
 	for (int i = 1; i < grids.size(); i++) {
 		grids[i]->restrict_stencil();
 		// DEBUG
@@ -353,8 +364,7 @@ void homo::MG::updateStencils(void)
 	}
 }
 
-void homo::MG::test_v_cycle(void)
-{
+void homo::MG::test_v_cycle(void) {
 	//grids[0]->v3_wave(grids[0]->f_g, { 1,1,1 });
 	//grids[0]->enforce_dirichlet_boundary(grids[0]->f_g);
 	//grids[0]->enforce_period_boundary(grids[0]->f_g, true);
@@ -381,8 +391,8 @@ void homo::MG::test_v_cycle(void)
 		timehis.emplace_back(s_time);
 	}
 	array2ConnectedMatlab("errhis", errhis.data(), errhis.size());
-	homoutils::writeVector("errhis",errhis);
-	homoutils::writeVector("timehis",timehis);
+	homoutils::writeVector("errhis", errhis);
+	homoutils::writeVector("timehis", timehis);
 	printf("average time = %.2f\n", s_time / 50);
 	printf("=finished\n");
 #elif 0
@@ -414,7 +424,6 @@ void homo::MG::test_v_cycle(void)
 	grids[0]->v3_toMatlab("r0", grids[0]->r_g);
 	grids[0]->v3_write(getPath("res0"), grids[0]->r_g);
 	printf("rel_res = %6.4lf%%\n", grids[0]->relative_residual() * 100);
-
 
 	grids[1]->restrict_residual();
 	grids[1]->v3_toMatlab("f", grids[1]->f_g);
@@ -449,7 +458,8 @@ void homo::MG::test_v_cycle(void)
 				grids[i]->reset_displacement();
 				//grids[i]->v3_toMatlab("f", grids[i]->f_g);
 			}
-			if (i != grids.size() - 1) grids[i]->gs_relaxation(/*1.8f*/);
+			if (i != grids.size() - 1)
+				grids[i]->gs_relaxation(/*1.8f*/);
 			// coarsest
 			if (i == grids.size() - 1) {
 				//grids[i]->v3_toMatlab("f", grids[i]->f_g);
@@ -483,7 +493,7 @@ void homo::MG::test_v_cycle(void)
 	}
 
 	array2ConnectedMatlab("errs", errlist.data(), errlist.size());
-	
+
 #elif 1
 	std::vector<double> errlist;
 	double fnorm = grids[0]->v3_norm(grids[0]->f_g);
@@ -512,15 +522,16 @@ void homo::MG::test_v_cycle(void)
 
 #elif 0
 	std::vector<double> errlist;
-	double* ftmp[3], * u0[3], * u1[3];
+	double *ftmp[3], *u0[3], *u1[3];
 	grids[0]->v3_create(ftmp);
-	grids[0]->v3_create(u0); grids[0]->v3_reset(u0);
+	grids[0]->v3_create(u0);
+	grids[0]->v3_reset(u0);
 	grids[0]->v3_create(u1);
 	grids[0]->v3_copy(ftmp, grids[0]->getForce());
 	while (itn++ < 50) {
 		double rel_res = 1;
 		//while (rel_res > 1e-2) {
-			rel_res = v_cycle(1);
+		rel_res = v_cycle(1);
 		//}
 		//grids[0]->v3_toMatlab("u", grids[0]->u_g);
 		double uch = grids[0]->v3_diffnorm(grids[0]->u_g, u0) / grids[0]->v3_norm(grids[0]->u_g);
@@ -583,8 +594,7 @@ void homo::MG::test_v_cycle(void)
 #endif
 }
 
-void homo::MG::test_diag_precondition(void)
-{
+void homo::MG::test_diag_precondition(void) {
 	using VType = decltype(grids[0]->u_g);
 	double d = 1e6;
 	grids[0]->diagPrecondition(d);
@@ -593,8 +603,11 @@ void homo::MG::test_diag_precondition(void)
 	grids[0]->useFchar(0);
 	grids[0]->v3_toMatlab("f0", grids[0]->getForce());
 	double fnorm = grids[0]->v3_norm(grids[0]->f_g);
-	VType ftmp; grids[0]->v3_create(ftmp); grids[0]->v3_copy(ftmp, grids[0]->getForce());
-	VType utmp; grids[0]->v3_create(utmp);
+	VType ftmp;
+	grids[0]->v3_create(ftmp);
+	grids[0]->v3_copy(ftmp, grids[0]->getForce());
+	VType utmp;
+	grids[0]->v3_create(utmp);
 
 	for (int itn = 0; itn < 1000; itn++) {
 		grids[0]->v3_copy(utmp, grids[0]->getDisplacement());
@@ -608,7 +621,8 @@ void homo::MG::test_diag_precondition(void)
 		grids[0]->v3_toMatlab("rd", grids[0]->getResidual());
 		grids[0]->v3_linear(1.f, ftmp, d * 8, grids[0]->getDisplacement(), grids[0]->getForce());
 		printf("* iter %04d rr = %4.2lf%%  uch = %.4le\n", itn, rr * 100, uch);
-		if (uch < 1e-6) break;
+		if (uch < 1e-6)
+			break;
 	}
 
 	grids[0]->update_residual();
@@ -629,8 +643,7 @@ void homo::MG::test_diag_precondition(void)
 	printf("Check :  rr = %4.2lf%%", rr * 100);
 }
 
-void homo::MG::v_cycle_profile(void)
-{
+void homo::MG::v_cycle_profile(void) {
 	printf("\n\033[32m = = = = = = = = starting v-cycle profile = = = = = = = = = = \033[0m\n");
 	double w_SOR = 1;
 	for (int i = 0; i < grids.size(); i++) {
@@ -648,8 +661,7 @@ void homo::MG::v_cycle_profile(void)
 		}
 		if (i == grids.size() - 1) {
 			grids[i]->solveHostEquation();
-		}
-		else {
+		} else {
 			_TIC("gs relx");
 			grids[i]->gs_relaxation(w_SOR);
 			_TOC;
@@ -674,8 +686,7 @@ void homo::MG::v_cycle_profile(void)
 	return /*grids[0]->relative_residual()*/;
 }
 
-void homo::MG::test_sor(void)
-{
+void homo::MG::test_sor(void) {
 	grids[0]->useFchar(0);
 	updateStencils();
 	double fnorm = grids[0]->v3_norm(grids[0]->getForce());
@@ -697,11 +708,10 @@ void homo::MG::test_sor(void)
 	grids[0]->array2matlab("errsor", errlist.data(), errlist.size());
 }
 
-void homo::MG::test_pcg(void)
-{
+void homo::MG::test_pcg(void) {
 	grids[0]->useFchar(0);
 	//grids[0]->enforce_dirichlet_boundary(grids[0]->f_g);
 	//grids[0]->enforce_period_boundary(grids[0]->f_g, true);
-	
+
 	pcg();
 }

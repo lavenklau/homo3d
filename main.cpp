@@ -16,15 +16,14 @@ extern void test_NegativePoisson(void);
 extern void runInstance(cfg::HomoConfig);
 
 namespace homo {
-	extern std::string setPathPrefix(const std::string& fprefix);
+extern std::string setPathPrefix(const std::string& fprefix);
 }
 
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv) {
 	cfg::HomoConfig config;
 	config.parse(argc, argv);
 
-    std::cout << "Hello World!\n";
+	std::cout << "Hello World!\n";
 	cuda_test();
 	//testAutoDiff();
 	//testAutoDiff_cu();
@@ -37,14 +36,17 @@ int main(int argc, char** argv)
 	try {
 		testHomogenization(config);
 		runInstance(config);
-	}
-	catch (std::runtime_error e) {
-		std::cout << "\033[31m" << "Exception occurred: " << std::endl << e.what() << std::endl << ", aborting..." << "\033[0m" << std::endl;
+	} catch (std::runtime_error e) {
+		std::cout << "\033[31m"
+				  << "Exception occurred: " << std::endl
+				  << e.what() << std::endl
+				  << ", aborting..."
+				  << "\033[0m" << std::endl;
 		exit(-1);
 	} catch (...) {
-		std::cout << "\033[31m" << "Unhandled Exception occurred, aborting..." << "\033[0m" << std::endl;
+		std::cout << "\033[31m"
+				  << "Unhandled Exception occurred, aborting..."
+				  << "\033[0m" << std::endl;
 		exit(-1);
 	}
 }
-
-

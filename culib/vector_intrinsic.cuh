@@ -16,9 +16,9 @@ __device__ inline char4 vsub4(char4 i1, char4 i2) {
 }
 
 __device__ inline unsigned int pack(char3 c3) {
-	char4 c4{ c3.x,c3.y,c3.z,0 };
+	char4 c4{c3.x, c3.y, c3.z, 0};
 	unsigned int ui = reinterpret_cast<unsigned int&>(c4);
-	return  ui;
+	return ui;
 }
 
 __device__ inline unsigned int pack(short x, short y) {
@@ -27,4 +27,3 @@ __device__ inline unsigned int pack(short x, short y) {
 	cub::BFI(ui, ui, y, 16, 16);
 	return ui;
 }
-

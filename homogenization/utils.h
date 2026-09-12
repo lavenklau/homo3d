@@ -26,7 +26,8 @@ struct Zp {
 template<>
 struct Zp<0> {
 	int _modulu;
-	Zp(int m) :_modulu(m) {}
+	Zp(int m)
+		: _modulu(m) {}
 	int operator[](int n) {
 		n -= _modulu * (n / _modulu);
 		n += _modulu;
@@ -45,7 +46,7 @@ inline size_t Round(size_t n) {
 }
 
 template<typename T, int N = 1>
-void writeVectors(const std::string& str, const std::vector<T> (&vecs)[N]){
+void writeVectors(const std::string& str, const std::vector<T> (&vecs)[N]) {
 	std::ofstream ofs(str, std::ios::binary);
 	if (!ofs) {
 		printf("\033[31mopen file %s failed\033[0m\n", str.c_str());
@@ -60,18 +61,18 @@ void writeVectors(const std::string& str, const std::vector<T> (&vecs)[N]){
 }
 
 template<typename T>
-void writeVector(const std::string& str, const std::vector<T> &vec){
+void writeVector(const std::string& str, const std::vector<T>& vec) {
 	std::ofstream ofs(str, std::ios::binary);
 	if (!ofs) {
 		printf("\033[31mopen file %s failed\033[0m\n", str.c_str());
 		return;
 	}
-	ofs.write((const char *)vec.data(), sizeof(T) * vec.size());
+	ofs.write((const char*)vec.data(), sizeof(T) * vec.size());
 	return;
 }
 
 template<typename T, int N = 1>
-void readVectors(const std::string& str, std::vector<T>(&vecs)[N]) {
+void readVectors(const std::string& str, std::vector<T> (&vecs)[N]) {
 	std::ifstream ifs(str, std::ios::binary | std::ios::ate);
 	if (!ifs) {
 		printf("\033[31mopen file %s failed\033[0m\n", str.c_str());
@@ -79,7 +80,8 @@ void readVectors(const std::string& str, std::vector<T>(&vecs)[N]) {
 	}
 	size_t fsize = ifs.tellg();
 	int vsize = fsize / (N * sizeof(T));
-	for (int i = 0; i < N; i++) vecs[i].resize(vsize);
+	for (int i = 0; i < N; i++)
+		vecs[i].resize(vsize);
 	ifs.seekg(0, std::ios::beg);
 	for (int j = 0; j < vsize; j++) {
 		for (int i = 0; i < N; i++) {
@@ -88,4 +90,4 @@ void readVectors(const std::string& str, std::vector<T>(&vecs)[N]) {
 	}
 	return;
 }
-}
+} // namespace homoutils

@@ -26,15 +26,16 @@ DEFINE_double(relthres, 0.01, "relative residual threshold for FEM");
 DEFINE_bool(periodfilt, false, "use periodic filter");
 DEFINE_bool(usesym, true, "whether to use symmetrization");
 
-void cfg::HomoConfig::parse(int argc, char** argv)
-{
+void cfg::HomoConfig::parse(int argc, char** argv) {
 	gflags::SetVersionString("1.0");
 	gflags::SetUsageMessage("Homo3d option:\n");
 	gflags::ParseCommandLineFlags(&argc, &argv, false);
-	std::string  cmdline_str = gflags::CommandlineFlagsIntoString();
+	std::string cmdline_str = gflags::CommandlineFlagsIntoString();
 
 	// write cmdline config to file
-	std::ofstream ofs(FLAGS_prefix + "cmdline"); ofs << cmdline_str; ofs.close();
+	std::ofstream ofs(FLAGS_prefix + "cmdline");
+	ofs << cmdline_str;
+	ofs.close();
 
 	// fill resolution field
 	reso[0] = reso[1] = reso[2] = FLAGS_reso;
@@ -42,17 +43,13 @@ void cfg::HomoConfig::parse(int argc, char** argv)
 	// fill obj field
 	if (FLAGS_obj == "bulk") {
 		obj = Objective::bulk;
-	}
-	else if (FLAGS_obj == "shear") {
+	} else if (FLAGS_obj == "shear") {
 		obj = Objective::shear;
-	}
-	else if (FLAGS_obj == "npr") {
+	} else if (FLAGS_obj == "npr") {
 		obj = Objective::npr;
-	}
-	else if (FLAGS_obj == "custom") {
+	} else if (FLAGS_obj == "custom") {
 		obj = Objective::custom;
-	}
-	else {
+	} else {
 		printf("\033[31munrecognized Objective type %s\033[0m\n", FLAGS_obj.c_str());
 		exit(-1);
 	}
@@ -60,17 +57,13 @@ void cfg::HomoConfig::parse(int argc, char** argv)
 	// fill symmetry type
 	if (FLAGS_sym == "reflect3") {
 		sym = Symmetry::reflect3;
-	}
-	else if (FLAGS_sym == "reflect6") {
+	} else if (FLAGS_sym == "reflect6") {
 		sym = Symmetry::reflect6;
-	}
-	else if (FLAGS_sym == "rotate3") {
+	} else if (FLAGS_sym == "rotate3") {
 		sym = Symmetry::rotate3;
-	}
-	else if (FLAGS_sym == "none") {
+	} else if (FLAGS_sym == "none") {
 		sym = Symmetry::NONE;
-	}
-	else {
+	} else {
 		printf("\033[31munrecognized symmetry type %s\033[0m\n", FLAGS_sym.c_str());
 		exit(-1);
 	}
@@ -78,35 +71,25 @@ void cfg::HomoConfig::parse(int argc, char** argv)
 	// fill init density means
 	if (FLAGS_init == "rand") {
 		winit = InitWay::random;
-	}
-	else if (FLAGS_init == "randc") {
+	} else if (FLAGS_init == "randc") {
 		winit = InitWay::randcenter;
-	}
-	else if (FLAGS_init == "reprandc") {
+	} else if (FLAGS_init == "reprandc") {
 		winit = InitWay::rep_randcenter;
-	}
-	else if (FLAGS_init == "noise") {
+	} else if (FLAGS_init == "noise") {
 		winit = InitWay::noise;
-	}
-	else if (FLAGS_init == "interp") {
+	} else if (FLAGS_init == "interp") {
 		winit = InitWay::interp;
-	}
-	else if (FLAGS_init == "P") {
+	} else if (FLAGS_init == "P") {
 		winit = InitWay::P;
-	}
-	else if (FLAGS_init == "G") {
+	} else if (FLAGS_init == "G") {
 		winit = InitWay::G;
-	}
-	else if (FLAGS_init == "D") {
+	} else if (FLAGS_init == "D") {
 		winit = InitWay::D;
-	}
-	else if (FLAGS_init == "IWP") {
+	} else if (FLAGS_init == "IWP") {
 		winit = InitWay::IWP;
-	}
-	else if (FLAGS_init == "manual") {
+	} else if (FLAGS_init == "manual") {
 		winit = InitWay::manual;
-	}
-	else {
+	} else {
 		printf("\033[31munrecognized density initialize mean %s\033[0m\n", FLAGS_init.c_str());
 		exit(-1);
 	}

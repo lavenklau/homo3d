@@ -1,6 +1,6 @@
 #pragma once
 
-#pragma  warning(disable:4819)
+#pragma warning(disable : 4819)
 
 #include "platform_spec.h"
 #include <memory>
@@ -19,19 +19,19 @@
 #include "cuda_fp16.h"
 
 namespace glm {
-	using hmat3 = mat<3, 3, half>;
-	using hvec3 = vec<3, half>;
-};
+using hmat3 = mat<3, 3, half>;
+using hvec3 = vec<3, half>;
+}; // namespace glm
 
 namespace homo {
 
 #ifdef __CUDACC__
 #define __host_device_func __host__ __device__
 #else
-#define __host_device_func 
+#define __host_device_func
 #endif
 
-enum  FlagBit : uint16_t {
+enum FlagBit : uint16_t {
 	FICTION_FLAG = 1,
 	GS_ID = 0b1110,
 	PERIOD_PADDING = 0b10000,
@@ -53,37 +53,59 @@ enum  FlagBit : uint16_t {
 
 struct FlagBase {
 	uint16_t flagbits;
-	__host_device_func bool is_boundary(void) { return flagbits & BOUNDARY_MASK; }
-	__host_device_func bool is_set(FlagBit flag) { return flagbits & flag; }
-	__host_device_func bool is_min_boundary(void) { return flagbits & MIN_BOUNDARY_MASK; }
-	__host_device_func bool is_max_boundary(void) { return flagbits & MAX_BOUNDARY_MASK; }
-	__host_device_func void set_boundary(FlagBit boundaryFlag) { flagbits |= boundaryFlag; }
+	__host_device_func bool is_boundary(void) {
+		return flagbits & BOUNDARY_MASK;
+	}
+	__host_device_func bool is_set(FlagBit flag) {
+		return flagbits & flag;
+	}
+	__host_device_func bool is_min_boundary(void) {
+		return flagbits & MIN_BOUNDARY_MASK;
+	}
+	__host_device_func bool is_max_boundary(void) {
+		return flagbits & MAX_BOUNDARY_MASK;
+	}
+	__host_device_func void set_boundary(FlagBit boundaryFlag) {
+		flagbits |= boundaryFlag;
+	}
 
-	__host_device_func bool is_fiction(void) { return flagbits & FlagBit::FICTION_FLAG; }
+	__host_device_func bool is_fiction(void) {
+		return flagbits & FlagBit::FICTION_FLAG;
+	}
 
-	__host_device_func void set_fiction(void) { flagbits |= FICTION_FLAG; }
+	__host_device_func void set_fiction(void) {
+		flagbits |= FICTION_FLAG;
+	}
 
-	__host_device_func int get_gscolor(void) { return (flagbits & FlagBit::GS_ID) >> 1; }
+	__host_device_func int get_gscolor(void) {
+		return (flagbits & FlagBit::GS_ID) >> 1;
+	}
 
 	__host_device_func void set_gscolor(int color) {
 		flagbits &= ~GS_ID;
 		flagbits |= color << 1;
 	}
 
-	__host_device_func void set_period_padding(void) { flagbits |= PERIOD_PADDING; }
+	__host_device_func void set_period_padding(void) {
+		flagbits |= PERIOD_PADDING;
+	}
 
-	__host_device_func bool is_period_padding(void) { return flagbits & PERIOD_PADDING; }
+	__host_device_func bool is_period_padding(void) {
+		return flagbits & PERIOD_PADDING;
+	}
 
-	__host_device_func bool is_dirichlet_boundary(void) { return flagbits & DIRICHLET_BOUNDARY; }
-	__host_device_func bool set_dirichlet_boundary(void) { flagbits |= DIRICHLET_BOUNDARY; }
+	__host_device_func bool is_dirichlet_boundary(void) {
+		return flagbits & DIRICHLET_BOUNDARY;
+	}
+	__host_device_func bool set_dirichlet_boundary(void) {
+		flagbits |= DIRICHLET_BOUNDARY;
+	}
 };
 
 struct VertexFlags : public FlagBase {
 };
 
-struct CellFlags : public FlagBase
-{
-	
+struct CellFlags : public FlagBase {
 };
 
 enum VoxelIOFormat {
@@ -126,7 +148,7 @@ struct Grid {
 	glm::hmat3* stencil_g[27];
 	using StencilT = glm::hmat3;
 
-	using VT = float; 
+	using VT = float;
 
 	VT* u_g[3];
 	VT* f_g[3];
@@ -177,8 +199,7 @@ struct Grid {
 		T* pTraits;
 		try {
 			pTraits = std::any_cast<T*>(cellTraits[traitName]);
-		}
-		catch (...) {
+		} catch (...) {
 			std::cerr << "\033[31mTrait type does not match the name\033[0m" << std::endl;
 		}
 		return pTraits;
@@ -189,8 +210,7 @@ struct Grid {
 		T* pTraits;
 		try {
 			pTraits = std::any_cast<T*>(cellTraits[traitName]);
-		}
-		catch (...) {
+		} catch (...) {
 			std::cerr << "\033[31mTrait type does not match the name\033[0m" << std::endl;
 		}
 		return pTraits;
@@ -212,7 +232,9 @@ struct Grid {
 
 	void buildRoot(int xreso, int yreso, int zreso, GridConfig config);
 
-	std::array<int, 3> getCellReso(void) { return cellReso; }
+	std::array<int, 3> getCellReso(void) {
+		return cellReso;
+	}
 
 	void setFlags_g(void);
 
@@ -343,7 +365,7 @@ struct Grid {
 	void v3_removeT(VT* u[3], VT tHost[3]);
 	void v3_linear(VT a1, VT* v1[3], VT a2, VT* v2[3], VT* v[3], int len = -1);
 	void v3_toMatlab(const std::string& mname, double* v[3], int len = -1);
-	void v3_toMatlab(const std::string &mname, VT *v[3], int len = -1, bool removePeriodDof = false);
+	void v3_toMatlab(const std::string& mname, VT* v[3], int len = -1, bool removePeriodDof = false);
 	void v3_write(const std::string& filename, VT* v[3], int len = -1);
 	void v3_write(const std::string& filename, VT* v[3], bool removePeriodDof = false);
 	void v3_read(const std::string& filename, VT* v[3]);
@@ -381,8 +403,9 @@ struct Grid {
 	int vlexid2gsid(int lexid, bool hasPeriodDof = false);
 	int elexid2gsid(int lexid);
 
-	//  lexico order with no padding to period padded GS order 
-	enum LexiType { VERTEX, CELL };
+	//  lexico order with no padding to period padded GS order
+	enum LexiType { VERTEX,
+					CELL };
 	void lexi2gsorder(float* src, float* dst, LexiType type_, bool lexipadded = false);
 	void lexi2gsorder(half* src, half* dst, LexiType type_, bool lexipadded = false);
 	void lexi2gsorder(glm::hmat3* src, glm::hmat3* dst, LexiType type_, bool lexipadded = false);
@@ -411,7 +434,7 @@ struct Grid {
 	void testVflags(void);
 	void test_gs_relaxation(void);
 	//void testgsid2pos(void);
-private:
+  private:
 	// return nv, ne
 	std::pair<int, int> countGS(void);
 	size_t allocateBuffer(int nv, int ne);
@@ -420,7 +443,6 @@ private:
 extern std::string getPath(const std::string& str);
 extern std::string setPathPrefix(const std::string& str);
 
-}
-
+} // namespace homo
 
 constexpr float rhoPenalMin = 1e-9;

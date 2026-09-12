@@ -5,8 +5,8 @@ using namespace homo;
 
 __device__ bool inStrictBound(int pi[3], int cover[3]) {
 	return pi[0] > -cover[0] && pi[0] < cover[0] &&
-		pi[1] > -cover[1] && pi[1] < cover[1] &&
-		pi[2] > -cover[2] && pi[2] < cover[2];
+		   pi[1] > -cover[1] && pi[1] < cover[1] &&
+		   pi[2] > -cover[2] && pi[2] < cover[2];
 }
 
 #if 0
@@ -418,8 +418,7 @@ __global__ void gs_relaxation_otf_kernel_opt(
 }
 #endif
 
-void homo::Grid::gs_relaxation_ex(float w_SOR /*= 1.f*/)
-{
+void homo::Grid::gs_relaxation_ex(float w_SOR /*= 1.f*/) {
 	NO_SUPPORT_ERROR;
 #if 0
 	if (!is_root) return;
@@ -450,9 +449,8 @@ void homo::Grid::gs_relaxation_ex(float w_SOR /*= 1.f*/)
 #endif
 }
 
-template <typename T>
-__global__ void interpDensityFrom_kernel(T *rholist, cudaTextureObject_t rhoTex)
-{
+template<typename T>
+__global__ void interpDensityFrom_kernel(T* rholist, cudaTextureObject_t rhoTex) {
 	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
 	int reso[3] = {gGridCellReso[0], gGridCellReso[1], gGridCellReso[2]};
 	int ne = gGridCellReso[0] * gGridCellReso[1] * gGridCellReso[2];
@@ -468,8 +466,7 @@ __global__ void interpDensityFrom_kernel(T *rholist, cudaTextureObject_t rhoTex)
 	rholist[gsid] = f;
 }
 
-void homo::Grid::interpDensityFrom(const std::string &fname, VoxelIOFormat frmat)
-{
+void homo::Grid::interpDensityFrom(const std::string& fname, VoxelIOFormat frmat) {
 	useGrid_g();
 	std::vector<float> values;
 	int reso[3];
@@ -477,7 +474,7 @@ void homo::Grid::interpDensityFrom(const std::string &fname, VoxelIOFormat frmat
 
 	// Allocate CUDA array in device memory
 	cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc(32, 0, 0, 0, cudaChannelFormatKindFloat);
-	cudaArray *cuArray;
+	cudaArray* cuArray;
 	cudaExtent extent{reso[0], reso[1], reso[2]};
 	// cudaMalloc3DArray(cudaArray_t * array, const struct cudaChannelFormatDesc* desc, struct cudaExtent extent, unsigned int flags __dv(0));
 	CheckErr(cudaMalloc3DArray(&cuArray, &channelDesc, extent));
@@ -910,8 +907,7 @@ __global__ void update_residual_otf_kernel_opt(
 }
 #endif
 
-void homo::Grid::update_residual_ex(void)
-{
+void homo::Grid::update_residual_ex(void) {
 	NO_SUPPORT_ERROR;
 #if 0
 	useGrid_g();
@@ -930,22 +926,21 @@ void homo::Grid::update_residual_ex(void)
 #endif
 }
 
-// gather per fine element matrix to coarse stencil, one thread for one coarse vertex 
+// gather per fine element matrix to coarse stencil, one thread for one coarse vertex
 // stencil was organized in lexico order(No padding), and should be transferred to gs order
 //template<int BlockSize = 256>
 template<typename T>
 __global__ void restrict_stencil_otf_aos_kernel_1(
-	int nv, T* rholist, CellFlags* eflags, VertexFlags* vflags
-) {
+	int nv, T* rholist, CellFlags* eflags, VertexFlags* vflags) {
 	//__shared__ glm::mat<3, 3, double> KE[8][8];
 	__shared__ glm::mat3 KE[8][8];
 	__shared__ int coarseReso[3];
 	__shared__ int fineReso[3];
 	__shared__ int gsFineCellReso[3][8];
 	__shared__ int gsFineCellEnd[8];
-	
-	if (threadIdx.x < 3) { 
-		coarseReso[threadIdx.x] = gGridCellReso[threadIdx.x]; 
+
+	if (threadIdx.x < 3) {
+		coarseReso[threadIdx.x] = gGridCellReso[threadIdx.x];
 		fineReso[threadIdx.x] = coarseReso[threadIdx.x] * gUpCoarse[threadIdx.x];
 	}
 	if (threadIdx.x < 8) {
@@ -957,34 +952,40 @@ __global__ void restrict_stencil_otf_aos_kernel_1(
 	loadTemplateMatrix(KE);
 
 	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
-	int coarseRatio[3] = { gUpCoarse[0], gUpCoarse[1], gUpCoarse[2] };
+	int coarseRatio[3] = {gUpCoarse[0], gUpCoarse[1], gUpCoarse[2]};
 	int vipos[3] = {
 		tid % (coarseReso[0] + 1),
 		tid / (coarseReso[0] + 1) % (coarseReso[1] + 1),
-		tid / ((coarseReso[0] + 1) * (coarseReso[1] + 1)) };
+		tid / ((coarseReso[0] + 1) * (coarseReso[1] + 1))};
 	//size_t vid = lexi2gs(vipos, gGsVertexReso, gGsVertexEnd);
 	size_t vid = tid;
 
 	//bool debug = vid == 63;
 	bool debug = false;
 
-	if (vid >= nv) return;
+	if (vid >= nv)
+		return;
 
-	vipos[0] *= coarseRatio[0]; vipos[1] *= coarseRatio[1]; vipos[2] *= coarseRatio[2];
+	vipos[0] *= coarseRatio[0];
+	vipos[1] *= coarseRatio[1];
+	vipos[2] *= coarseRatio[2];
 
 	float pr = coarseRatio[0] * coarseRatio[1] * coarseRatio[2];
 
-	if (debug) { printf("vipos = (%d, %d, %d)\n", vipos[0], vipos[1], vipos[2]); }
+	if (debug) {
+		printf("vipos = (%d, %d, %d)\n", vipos[0], vipos[1], vipos[2]);
+	}
 
 	for (int vj = 0; vj < 27; vj++) {
 		int coarse_vj_off[3] = {
-			coarseRatio[0] * (vj % 3 -1),
-			coarseRatio[1] * (vj / 3 % 3 -1),
-			coarseRatio[2] * (vj / 9 - 1)
-		};
+			coarseRatio[0] * (vj % 3 - 1),
+			coarseRatio[1] * (vj / 3 % 3 - 1),
+			coarseRatio[2] * (vj / 9 - 1)};
 		//glm::mat<3, 3, double> st(0.f);
 		glm::mat3 st(0.f);
-		if (debug) { printf("coarse_vj_off = (%d, %d, %d)\n", coarse_vj_off[0], coarse_vj_off[1], coarse_vj_off[2]); }
+		if (debug) {
+			printf("coarse_vj_off = (%d, %d, %d)\n", coarse_vj_off[0], coarse_vj_off[1], coarse_vj_off[2]);
+		}
 		for (int xfine_off = -coarseRatio[0]; xfine_off < coarseRatio[0]; xfine_off++) {
 			for (int yfine_off = -coarseRatio[1]; yfine_off < coarseRatio[1]; yfine_off++) {
 				for (int zfine_off = -coarseRatio[2]; zfine_off < coarseRatio[2]; zfine_off++) {
@@ -999,10 +1000,11 @@ __global__ void restrict_stencil_otf_aos_kernel_1(
 						e_fine_off[2] < -coarseRatio[2] || e_fine_off[2] >= coarseRatio[2]) {
 						continue;
 					};
-					if (debug) { printf(" e_fine_off = (%d, %d, %d)\n", e_fine_off[0], e_fine_off[1], e_fine_off[2]); }
+					if (debug) {
+						printf(" e_fine_off = (%d, %d, %d)\n", e_fine_off[0], e_fine_off[1], e_fine_off[2]);
+					}
 					int e_fine_pos[3] = {
-						vipos[0] + e_fine_off[0], vipos[1] + e_fine_off[1], vipos[2] + e_fine_off[2]
-					};
+						vipos[0] + e_fine_off[0], vipos[1] + e_fine_off[1], vipos[2] + e_fine_off[2]};
 					// exclude padded element
 					if (e_fine_pos[0] < 0 || e_fine_pos[0] >= fineReso[0] ||
 						e_fine_pos[1] < 0 || e_fine_pos[1] >= fineReso[1] ||
@@ -1012,33 +1014,36 @@ __global__ void restrict_stencil_otf_aos_kernel_1(
 					int eid = lexi2gs(e_fine_pos, gsFineCellReso, gsFineCellEnd);
 					//auto eflag = eflags[eid];
 					float rho_penal = powf(float(rholist[eid]), exp_penal[0]);
-					if (debug) { printf(" e_fine_pos = (%d, %d, %d), eid = %d, rhopenal = %f\n", e_fine_pos[0], e_fine_pos[1], e_fine_pos[2], eid, rho_penal); }
+					if (debug) {
+						printf(" e_fine_pos = (%d, %d, %d), eid = %d, rhopenal = %f\n", e_fine_pos[0], e_fine_pos[1], e_fine_pos[2], eid, rho_penal);
+					}
 					for (int e_vi = 0; e_vi < 8; e_vi++) {
 						int e_vi_fine_off[3] = {
 							e_fine_off[0] + e_vi % 2,
 							e_fine_off[1] + e_vi / 2 % 2,
-							e_fine_off[2] + e_vi / 4
-						};
-						if (!inStrictBound(e_vi_fine_off, coarseRatio)) continue;
+							e_fine_off[2] + e_vi / 4};
+						if (!inStrictBound(e_vi_fine_off, coarseRatio))
+							continue;
 						float wi = (coarseRatio[0] - abs(e_vi_fine_off[0])) *
-							(coarseRatio[1] - abs(e_vi_fine_off[1])) *
-							(coarseRatio[2] - abs(e_vi_fine_off[2])) / pr;
-						if (debug) printf("   e_vi_off = (%d, %d, %d), wi = %f\n", e_vi_fine_off[0], e_vi_fine_off[1], e_vi_fine_off[2], wi);
+								   (coarseRatio[1] - abs(e_vi_fine_off[1])) *
+								   (coarseRatio[2] - abs(e_vi_fine_off[2])) / pr;
+						if (debug)
+							printf("   e_vi_off = (%d, %d, %d), wi = %f\n", e_vi_fine_off[0], e_vi_fine_off[1], e_vi_fine_off[2], wi);
 						wi *= rho_penal;
 						for (int e_vj = 0; e_vj < 8; e_vj++) {
 							int vij_off[3] = {
 								abs(e_fine_off[0] + e_vj % 2 - coarse_vj_off[0]),
 								abs(e_fine_off[1] + e_vj / 2 % 2 - coarse_vj_off[1]),
-								abs(e_fine_off[2] + e_vj / 4 - coarse_vj_off[2])
-							};
+								abs(e_fine_off[2] + e_vj / 4 - coarse_vj_off[2])};
 							if (vij_off[0] >= coarseRatio[0] || vij_off[1] >= coarseRatio[1] ||
 								vij_off[2] >= coarseRatio[2]) {
 								continue;
 							}
 							float wj = (coarseRatio[0] - vij_off[0]) *
-								(coarseRatio[1] - vij_off[1]) *
-								(coarseRatio[2] - vij_off[2]) / pr;
-							if (debug) printf("    vij_off = (%d, %d, %d), wi = %f\n", vij_off[0], vij_off[1], vij_off[2], wj);
+									   (coarseRatio[1] - vij_off[1]) *
+									   (coarseRatio[2] - vij_off[2]) / pr;
+							if (debug)
+								printf("    vij_off = (%d, %d, %d), wi = %f\n", vij_off[0], vij_off[1], vij_off[2], wj);
 							st += (wi * wj) * KE[e_vi][e_vj];
 						}
 					}
@@ -1065,8 +1070,7 @@ __global__ void restrict_stencil_otf_aos_kernel_1(
 __global__ void restrict_stencil_aos_kernel_1(
 	int nv_coarse, int nv_fine,
 	VertexFlags* vflags,
-	VertexFlags* vfineflags
-) {
+	VertexFlags* vfineflags) {
 	__shared__ int gsVertexEnd[8];
 	__shared__ int gsFineVertexEnd[8];
 	__shared__ int gsFineVertexReso[3][8];
@@ -1087,15 +1091,16 @@ __global__ void restrict_stencil_aos_kernel_1(
 	//size_t vid = blockIdx.x * 32 + laneId;
 	size_t vid = blockIdx.x * blockDim.x + threadIdx.x;
 
-	if (vid >= nv_coarse) fiction = true;
+	if (vid >= nv_coarse)
+		fiction = true;
 
 	VertexFlags vflag;
-	if (!fiction) { 
-		vflag = vflags[vid]; 
+	if (!fiction) {
+		vflag = vflags[vid];
 		fiction = vflag.is_fiction();
 	}
 
-	int coarseRatio[3] = { gUpCoarse[0], gUpCoarse[1], gUpCoarse[2] };
+	int coarseRatio[3] = {gUpCoarse[0], gUpCoarse[1], gUpCoarse[2]};
 
 	float pr = coarseRatio[0] * coarseRatio[1] * coarseRatio[2];
 
@@ -1109,8 +1114,7 @@ __global__ void restrict_stencil_aos_kernel_1(
 			int coarse_vj_off[3] = {
 				coarseRatio[0] * (i % 3 - 1),
 				coarseRatio[1] * (i / 3 % 3 - 1),
-				coarseRatio[2] * (i / 9 - 1)
-			};
+				coarseRatio[2] * (i / 9 - 1)};
 			glm::mat3 st(0.f);
 			for (int xfine_off = -coarseRatio[0]; xfine_off <= coarseRatio[0]; xfine_off++) {
 				for (int yfine_off = -coarseRatio[1]; yfine_off <= coarseRatio[1]; yfine_off++) {
@@ -1118,9 +1122,9 @@ __global__ void restrict_stencil_aos_kernel_1(
 						int vi_fine_off[3] = {
 							xfine_off + coarse_vj_off[0],
 							yfine_off + coarse_vj_off[1],
-							zfine_off + coarse_vj_off[2]
-						};
-						if (!inStrictBound(vi_fine_off, coarseRatio)) continue;
+							zfine_off + coarse_vj_off[2]};
+						if (!inStrictBound(vi_fine_off, coarseRatio))
+							continue;
 						int vi_neighId;
 						if (nondyadic) {
 							vi_neighId = indexer.neighFineVertex(vi_fine_off, coarseRatio, gsFineVertexEnd, gsFineVertexReso, true).getId();
@@ -1128,20 +1132,19 @@ __global__ void restrict_stencil_aos_kernel_1(
 							vi_neighId = indexer.neighFineVertex(vi_fine_off, coarseRatio, gsFineVertexEnd, gsFineVertexReso, false).getId();
 						}
 						float wi = (coarseRatio[0] - abs(vi_fine_off[0])) *
-							(coarseRatio[1] - abs(vi_fine_off[1])) *
-							(coarseRatio[2] - abs(vi_fine_off[2])) / pr;
+								   (coarseRatio[1] - abs(vi_fine_off[1])) *
+								   (coarseRatio[2] - abs(vi_fine_off[2])) / pr;
 						for (int vj_offid = 0; vj_offid < 27; vj_offid++) {
 							int vij_off[3] = {
 								abs(vi_fine_off[0] + vj_offid % 3 - 1 - coarse_vj_off[0]),
 								abs(vi_fine_off[1] + vj_offid / 3 % 3 - 1 - coarse_vj_off[1]),
-								abs(vi_fine_off[2] + vj_offid / 9 - 1 - coarse_vj_off[2]) 
-							};
+								abs(vi_fine_off[2] + vj_offid / 9 - 1 - coarse_vj_off[2])};
 							if (vij_off[0] >= coarseRatio[0] || vij_off[1] >= coarseRatio[1] || vij_off[2] >= coarseRatio[2]) {
 								continue;
 							}
-							float wj = (coarseRatio[0] - vij_off[0]) * 
-								(coarseRatio[1] - vij_off[1]) * 
-								(coarseRatio[2] - vij_off[2]) / pr;
+							float wj = (coarseRatio[0] - vij_off[0]) *
+									   (coarseRatio[1] - vij_off[1]) *
+									   (coarseRatio[2] - vij_off[2]) / pr;
 							st += wi * wj * glm::mat3(rxFineStencil[vj_offid][vi_neighId]);
 						}
 					}
@@ -1159,5 +1162,5 @@ __global__ void restrict_stencil_aos_kernel_1(
 	}
 }
 
-template __global__ void restrict_stencil_otf_aos_kernel_1<half>(int nv, half *rholist, CellFlags *eflags, VertexFlags *vflags);
-template __global__ void restrict_stencil_otf_aos_kernel_1<float>(int nv, float *rholist, CellFlags *eflags, VertexFlags *vflags);
+template __global__ void restrict_stencil_otf_aos_kernel_1<half>(int nv, half* rholist, CellFlags* eflags, VertexFlags* vflags);
+template __global__ void restrict_stencil_otf_aos_kernel_1<float>(int nv, float* rholist, CellFlags* eflags, VertexFlags* vflags);
