@@ -7,8 +7,9 @@
 > ownership fixes and build system changes. While that work is in progress, the
 > tree here may not build or behave exactly like the published version.
 >
-> For the stable code that matches the paper, use the **`paper-version`** branch
-> instead:
+> For the stable code that matches the paper, switch to the
+> **[paper-version](https://github.com/lavenklau/homo3d/tree/paper-version)**
+> branch:
 > `git clone -b paper-version https://github.com/lavenklau/homo3d.git`
 
 ![image-20241111133209991](https://s2.loli.net/2024/11/11/jpC3TzYMWXArNIB.png)
