@@ -582,11 +582,6 @@ void homo::Grid::readDensity(const std::string& fname, std::vector<float>& value
 	values = std::move(rho);
 }
 
-void homo::Grid::interpDensityFromSDF(const std::string& fname, VoxelIOFormat frmat) {
-	interpDensityFrom(fname, frmat);
-	projectDensity(30.f, 0.f, -1.f);
-}
-
 void homo::Grid::readDisplacement(const std::string& fname) {
 	v3_read(fname, u_g);
 }

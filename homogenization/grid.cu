@@ -63,18 +63,6 @@ __constant__ float exp_penal[1];
 __constant__ float LAM[1];
 __constant__ float MU[1];
 
-extern __global__ void gs_relaxation_otf_kernel_opt(
-	int gs_set, float* rholist,
-	devArray_t<int, 3> gridCellReso,
-	VertexFlags* vflags, CellFlags* eflags,
-	float w = 1.f);
-
-extern __global__ void update_residual_otf_kernel_opt(
-	int nv, float* rholist,
-	devArray_t<int, 3> gridCellReso,
-	VertexFlags* vflags, CellFlags* eflags,
-	float diag_strength);
-
 template<typename T>
 __global__ void restrict_stencil_otf_aos_kernel_1(
 	int ne, T* rholist, CellFlags* eflags, VertexFlags* vflags);
@@ -1227,16 +1215,8 @@ void homo::Grid::gs_relaxation(float w_SOR /*= 1.f*/, int times_ /*= 1*/) {
 			int set_id = i;
 			int n_gs = gsVertexEnd[set_id] - (set_id == 0 ? 0 : gsVertexEnd[set_id - 1]);
 			if (assemb_otf) {
-#if 1
 				auto cfg = make_kernel_param(n_gs * 8, 32 * 8);
 				gs_relaxation_otf_kernel<<<cfg.grid, cfg.block>>>(set_id, rho_g, gridCellReso, vertflag, cellflag, w_SOR, diag_strength);
-#elif 1
-				auto cfg = make_kernel_param(n_gs * 8, 32 * 8);
-				gs_relaxation_otf_kernel_opt<<<cfg.grid, cfg.block>>>(i, rho_g, gridCellReso, vertflag, cellflag, w_SOR);
-#else
-				auto cfg = make_kernel_param(n_gs * 16, 32 * 16);
-				gs_relaxation_otf_kernel_test_512<<<cfg.grid, cfg.block>>>(i, rho_g, gridCellReso, vertflag, cellflag, w_SOR, diag_strength);
-#endif
 			} else {
 				auto cfg = make_kernel_param(n_gs * 13, 32 * 13);
 				gs_relaxation_kernel<<<cfg.grid, cfg.block>>>(set_id, vertflag, w_SOR);
@@ -1585,13 +1565,8 @@ void homo::Grid::update_residual(void) {
 	CellFlags* eflags = cellflag;
 	if (assemb_otf) {
 		auto cfg = make_kernel_param(n_gsvertices() * 8, 32 * 8);
-#if 1
 		update_residual_otf_kernel_1<<<cfg.grid, cfg.block>>>(n_gsvertices(), rho_g, gridCellReso,
 															  vflags, eflags, diag_strength);
-#else
-		update_residual_otf_kernel_opt<<<cfg.grid, cfg.block>>>(n_gsvertices(), rho_g, gridCellReso,
-																vflags, eflags, diag_strength);
-#endif
 		cudaDeviceSynchronize();
 		cuda_error_check;
 	} else {
@@ -4020,35 +3995,6 @@ void homo::Grid::enforceCellSymmetry(float* celldata, SymmetryType sym, bool ave
 void homo::Grid::enforceCellSymmetry(half* celldata, SymmetryType sym, bool average) {
 	useGrid_g();
 	enforceCellSymmetry_imp(celldata, sym, average, cellReso);
-}
-
-template<typename T>
-__global__ void projectDensity_kernel(int ne, CellFlags* eflags, T* rhos, float beta, float tau, float a = 1.f, float b = 0.f) {
-	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
-	if (tid >= ne)
-		return;
-	int eid = tid;
-	CellFlags eflag = eflags[eid];
-	if (eflag.is_fiction() || eflag.is_period_padding())
-		return;
-	float rho = a * float(rhos[eid]) + b;
-	rho = tanproj(rho, beta, tau);
-	if (rho < 0.5)
-		rho = 1e-9;
-	if (rho >= 0.5)
-		rho = 1;
-	rhos[eid] = rho;
-}
-
-void homo::Grid::projectDensity(float k, float eta, float a, float b) {
-	useGrid_g();
-	int ne = n_gscells();
-	CellFlags* eflags = cellflag;
-	auto cfg = make_kernel_param(ne, 256);
-	projectDensity_kernel<<<cfg.grid, cfg.block>>>(ne, eflags, rho_g, k, eta, a, b);
-	cudaDeviceSynchronize();
-	cuda_error_check;
-	pad_cell_data(rho_g);
 }
 
 double homo::Grid::projectDensityToVolume(float vol, float beta /*= 20*/) {

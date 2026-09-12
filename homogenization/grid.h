@@ -250,10 +250,6 @@ struct Grid {
 
 	void gs_relaxation(float w_SOR = 1.f, int times_ = 1);
 
-	void gs_relaxation_ex(float w_SOR = 1.f);
-
-	void update_residual_ex();
-
 	void gs_relaxation_profile(float w_SOR = 1.f);
 
 	void update_residual_profile(void);
@@ -322,13 +318,8 @@ struct Grid {
 
 	float sumDensity(void);
 
-	void projectDensity(float beta = 20, float eta = 0.5, float a = 1.f, float b = 0.f);
-
 	double projectDensityToVolume(float vol, float beta = 20);
 
-	void interpDensityFrom(const std::string& fname, VoxelIOFormat frmat);
-
-	void interpDensityFromSDF(const std::string& fname, VoxelIOFormat frmat);
 	//double elasticTensorElement(int i, int j);
 
 	void readDisplacement(const std::string& fname);
