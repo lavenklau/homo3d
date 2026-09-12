@@ -13,9 +13,8 @@ DEFINE_int32(logrho, 0, "log density field per steps, set 0 to disable log");
 DEFINE_int32(logc, 0, "log elastic tensor per x steps, set 0 to disable log");
 DEFINE_int32(logsens, 0, "log sensitivity per x steps, set 0 to disable log");
 DEFINE_int32(logobj, 0, "log objective value per x steps, set 0 to disable log");
-DEFINE_string(test, "none", "test name");
 DEFINE_bool(managedmem, true, "enable use of managed memory");
-DEFINE_string(in, "", "input density field for test");
+DEFINE_string(in, "", "input density field, used by -init manual and -init interp");
 DEFINE_int32(N, 300, "maximal iteration of optimization");
 DEFINE_int32(initperiod, 10, "maximal period basis for initial density");
 DEFINE_double(finthres, 5e-4, "threshold of change ratio used for objective convergence check");
@@ -118,9 +117,6 @@ void cfg::HomoConfig::parse(int argc, char** argv) {
 	// whether to log objective value
 	logobj = FLAGS_logobj;
 
-	// fill testname
-	testname = FLAGS_test;
-
 	// fill use managed mem flag
 	useManagedMemory = FLAGS_managedmem;
 
@@ -161,7 +157,6 @@ void cfg::HomoConfig::parse(int argc, char** argv) {
 	printf(" = logrho    - - - - - - - - - - - - - - - - - - - - - %s\n", b2s(FLAGS_logrho));
 	printf(" = logc    - - - - - - - - - - - - - - - - - - - - - - %s\n", b2s(FLAGS_logc));
 	printf(" = logsens   - - - - - - - - - - - - - - - - - - - - - %s\n", b2s(FLAGS_logsens));
-	printf(" = test    - - - - - - - - - - - - - - - - - - - - - - %s\n", FLAGS_test.c_str());
 	printf(" = useManagedMem   - - - - - - - - - - - - - - - - - - %s\n", b2s(FLAGS_managedmem));
 	printf(" = maxIter - - - - - - - - - - - - - - - - - - - - - - %d\n", FLAGS_N);
 	printf(" = initPeriod  - - - - - - - - - - - - - - - - - - - - %d\n", FLAGS_initperiod);

@@ -291,12 +291,12 @@ void optiNpr(cfg::HomoConfig config, var_tsexp_t<>& rho, Homogenization& hom, el
 void runCustom(cfg::HomoConfig config);
 
 void runInstance(cfg::HomoConfig config) {
+	// set output prefix first, so custom objectives get it too
+	setPathPrefix(config.outprefix);
 	if (config.obj == cfg::Objective::custom) {
 		runCustom(config);
 		return;
 	}
-	// set output prefix
-	setPathPrefix(config.outprefix);
 	// create homogenization domain
 	Homogenization hom(config);
 	// update config resolution

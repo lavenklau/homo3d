@@ -14,7 +14,6 @@ DECLARE_int32(logrho);
 DECLARE_int32(logc);
 DECLARE_int32(logsens);
 DECLARE_int32(logobj);
-DECLARE_string(test);
 DECLARE_bool(managedmem);
 DECLARE_string(in);
 DECLARE_int32(N);
@@ -63,7 +62,6 @@ struct HomoConfig {
 	double dampRatio;
 	double femRelThres;
 	std::string outprefix;
-	std::string testname;
 	std::string inputrho;
 	bool useManagedMemory = true;
 	int logrho, logc, logsens, logobj;
