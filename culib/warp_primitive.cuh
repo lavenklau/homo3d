@@ -4,14 +4,15 @@
 
 #define FULL_MASK 0xffffffff
 
-#define SHLF_OP_OFFSET(type)  template<typename Ts, int sT = sizeof(Ts), std::enable_if_t<sT==4,int> = 0> \
-__device__ Ts shfl_##type (Ts data, int offset) { \
-	return __shfl_down_sync(FULL_MASK, data, offset); \
-} \
-template<typename Ts, int sT = sizeof(Ts), std::enable_if_t<sT==8,int> = 0> \
-__device__ Ts shfl_##type (Ts data, int offset) { \
-	return __shfl_down_sync(FULL_MASK, data, offset); \
-} 
+#define SHLF_OP_OFFSET(type)                                                       \
+	template<typename Ts, int sT = sizeof(Ts), std::enable_if_t<sT == 4, int> = 0> \
+	__device__ Ts shfl_##type(Ts data, int offset) {                               \
+		return __shfl_down_sync(FULL_MASK, data, offset);                          \
+	}                                                                              \
+	template<typename Ts, int sT = sizeof(Ts), std::enable_if_t<sT == 8, int> = 0> \
+	__device__ Ts shfl_##type(Ts data, int offset) {                               \
+		return __shfl_down_sync(FULL_MASK, data, offset);                          \
+	}
 
 //template<typename Ts, int sT = sizeof(Ts)>
 //Ts shfl_down(Ts data, int offset) {
@@ -50,4 +51,3 @@ SHLF_OP_OFFSET(up)
 //	//val |= __shfl(int(reinterpret_cast<long long>(data) >> 32), srcLane, width) << 32;
 //	return reinterpret_cast<Ts>(val);
 //}
-

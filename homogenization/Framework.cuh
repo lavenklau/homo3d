@@ -12,7 +12,7 @@
 using namespace homo;
 using namespace culib;
 
-// cos 2 pi kx, k = 1, 2 , 3, ..., n,  n must be less than 100 
+// cos 2 pi kx, k = 1, 2 , 3, ..., n,  n must be less than 100
 template<typename T, int BlockSize = 256>
 __global__ void randTribase_cos_kernel(TensorView<T> view, int n_period, float* coeff) {
 
@@ -26,13 +26,14 @@ __global__ void randTribase_cos_kernel(TensorView<T> view, int n_period, float* 
 	int laneId = threadIdx.x % 32;
 	int vid = blockIdx.x * 32 + laneId;
 
-	if (n_period > 100) n_period = 100;
+	if (n_period > 100)
+		n_period = 100;
 
 	int nbasis1st = n_period * 3;
 	int nbasis2nd = n_period * n_period * 3;
 	int nbasis = nbasis1st + nbasis2nd;
 
-	float dm[3] = { view.size(0),view.size(1),view.size(2) };
+	float dm[3] = {view.size(0), view.size(1), view.size(2)};
 	int siz = view.size();
 	bool is_ghost = false;
 	is_ghost = vid >= siz;
@@ -48,16 +49,18 @@ __global__ void randTribase_cos_kernel(TensorView<T> view, int n_period, float* 
 
 		for (int i = warpId; i < n_period; i += BlockSize / 32) {
 #pragma unroll
-			for (int j = 0; j < 3; j++) cosv[j][i][laneId] = cosf(pi2 * (i + 1) * p[j]);
+			for (int j = 0; j < 3; j++)
+				cosv[j][i][laneId] = cosf(pi2 * (i + 1) * p[j]);
 		}
 	} else {
 		for (int i = warpId; i < n_period; i += BlockSize / 32) {
 #pragma unroll
-			for (int j = 0; j < 3; j++) cosv[j][i][laneId] = 0;
+			for (int j = 0; j < 3; j++)
+				cosv[j][i][laneId] = 0;
 		}
 	}
 	__syncthreads();
-	
+
 	if (!is_ghost) {
 		for (int i = warpId; i < nbasis; i += BlockSize / 32) {
 			if (i < nbasis1st) {
@@ -65,8 +68,8 @@ __global__ void randTribase_cos_kernel(TensorView<T> view, int n_period, float* 
 			} else if (i < nbasis1st + nbasis2nd) {
 				int j = (i - nbasis1st) / (n_period * n_period);
 				int k = (i - nbasis1st) % (n_period * n_period);
-				float cv1{ 0 };
-				float cv2{ 0 };
+				float cv1{0};
+				float cv2{0};
 				if (j == 0) {
 					cv1 = cosv[1][k % n_period][laneId];
 					cv2 = cosv[2][k / n_period][laneId];
@@ -79,7 +82,6 @@ __global__ void randTribase_cos_kernel(TensorView<T> view, int n_period, float* 
 				}
 				s += coeff[i] * cv1 * cv2;
 			} else {
-			
 			}
 		}
 	}
@@ -87,11 +89,17 @@ __global__ void randTribase_cos_kernel(TensorView<T> view, int n_period, float* 
 	//	printf("cv = (%f, %f, %f)\n", cosv[0][0][0], cosv[1][0][0], cosv[2][0][0]);
 	//	printf("coeff = (%f, %f, %f)\n", coeff[0], coeff[1], coeff[2]);
 	//}
-	if (warpId >= 4) { gSum[warpId - 4][laneId] = s; }
+	if (warpId >= 4) {
+		gSum[warpId - 4][laneId] = s;
+	}
 	__syncthreads();
-	if (warpId < 4) { gSum[warpId][laneId] += s; }
+	if (warpId < 4) {
+		gSum[warpId][laneId] += s;
+	}
 	__syncthreads();
-	if (warpId < 2) { gSum[warpId][laneId] += gSum[warpId + 2][laneId]; }
+	if (warpId < 2) {
+		gSum[warpId][laneId] += gSum[warpId + 2][laneId];
+	}
 	__syncthreads();
 	if (warpId < 1) {
 		s = gSum[warpId][laneId] + gSum[warpId + 1][laneId];
@@ -101,7 +109,7 @@ __global__ void randTribase_cos_kernel(TensorView<T> view, int n_period, float* 
 	}
 }
 
-// cos 2 pi kx, k = 1, 2 , 3, ..., n,  n must be less than 50 
+// cos 2 pi kx, k = 1, 2 , 3, ..., n,  n must be less than 50
 template<typename T, int BlockSize = 256>
 __global__ void randTribase_sincos_kernel(TensorView<T> view, int n_period, float* coeff, bool centered = false) {
 
@@ -117,7 +125,8 @@ __global__ void randTribase_sincos_kernel(TensorView<T> view, int n_period, floa
 	int laneId = threadIdx.x % 32;
 	int vid = blockIdx.x * 32 + laneId;
 
-	if (n_period > 50) n_period = 50;
+	if (n_period > 50)
+		n_period = 50;
 
 	int nbasis1st = n_period * 6;
 	int nbasis2nd = n_period * n_period * 36;
@@ -129,7 +138,7 @@ __global__ void randTribase_sincos_kernel(TensorView<T> view, int n_period, floa
 	}
 	__syncthreads();
 
-	float dm[3] = { view.size(0),view.size(1),view.size(2) };
+	float dm[3] = {view.size(0), view.size(1), view.size(2)};
 	int siz = view.size();
 	bool is_ghost = false;
 	is_ghost = vid >= siz;
@@ -144,10 +153,14 @@ __global__ void randTribase_sincos_kernel(TensorView<T> view, int n_period, floa
 		p[2] = posi[2] / (dm[2] - 1);
 
 		if (centered) {
-			p[0] -= 0.5f; p[1] -= 0.5f; p[2] -= 0.5f; 
+			p[0] -= 0.5f;
+			p[1] -= 0.5f;
+			p[2] -= 0.5f;
 			glm::vec3 v(p[0], p[1], p[2]);
 			v = rot * v;
-			p[0] = v[0]; p[1] = v[1]; p[2] = v[2];
+			p[0] = v[0];
+			p[1] = v[1];
+			p[2] = v[2];
 		}
 
 		for (int i = warpId; i < n_period; i += BlockSize / 32) {
@@ -167,14 +180,13 @@ __global__ void randTribase_sincos_kernel(TensorView<T> view, int n_period, floa
 		}
 	}
 	__syncthreads();
-	
+
 	if (!is_ghost) {
 		for (int i = warpId; i < nbasis; i += BlockSize / 32) {
 			if (i < nbasis1st) {
 				if (i < nbasis1st / 2) {
 					s += coeff[i] * cosv[i % 3][i / 3][laneId];
-				}
-				else {
+				} else {
 					int inext = i % (nbasis1st / 2);
 					s += coeff[i] * sinv[(inext % 3)][inext / 3][laneId];
 				}
@@ -182,8 +194,8 @@ __global__ void randTribase_sincos_kernel(TensorView<T> view, int n_period, floa
 				// todo
 				int j = (i - nbasis1st) / (n_period * 6);
 				int k = (i - nbasis1st) % (n_period * 6);
-				float cv1{ 0 };
-				float cv2{ 0 };
+				float cv1{0};
+				float cv2{0};
 				if (j < n_period * 3) {
 					cv1 = cosv[j / n_period][j % n_period][laneId];
 				} else {
@@ -196,7 +208,6 @@ __global__ void randTribase_sincos_kernel(TensorView<T> view, int n_period, floa
 				}
 				s += coeff[i] * cv1 * cv2;
 			} else {
-			
 			}
 		}
 	}
@@ -204,11 +215,17 @@ __global__ void randTribase_sincos_kernel(TensorView<T> view, int n_period, floa
 	//	printf("cv = (%f, %f, %f)\n", cosv[0][0][0], cosv[1][0][0], cosv[2][0][0]);
 	//	printf("coeff = (%f, %f, %f)\n", coeff[0], coeff[1], coeff[2]);
 	//}
-	if (warpId >= 4) { gSum[warpId - 4][laneId] = s; }
+	if (warpId >= 4) {
+		gSum[warpId - 4][laneId] = s;
+	}
 	__syncthreads();
-	if (warpId < 4) { gSum[warpId][laneId] += s; }
+	if (warpId < 4) {
+		gSum[warpId][laneId] += s;
+	}
 	__syncthreads();
-	if (warpId < 2) { gSum[warpId][laneId] += gSum[warpId + 2][laneId]; }
+	if (warpId < 2) {
+		gSum[warpId][laneId] += gSum[warpId + 2][laneId];
+	}
 	__syncthreads();
 	if (warpId < 1) {
 		s = gSum[warpId][laneId] + gSum[warpId + 1][laneId];
@@ -244,7 +261,7 @@ void randTri(Tensor<T> rho, cfg::HomoConfig config) {
 	int nbasis1st = n_period * 6;
 	int nbasis2nd = n_period * n_period * 36;
 	int nbasis = nbasis1st + nbasis2nd;
-	if (config.winit == cfg::InitWay::randcenter || 
+	if (config.winit == cfg::InitWay::randcenter ||
 		config.winit == cfg::InitWay::rep_randcenter) {
 		nbasis += 4;
 	}
@@ -256,7 +273,7 @@ void randTri(Tensor<T> rho, cfg::HomoConfig config) {
 		printf("reading coefficients from %s...", config.inputrho.c_str());
 		homoutils::readVectors(config.inputrho, coeffshost);
 		printf("  %d read  [%s]\n", int(coeffshost[0].size()),
-			(coeffshost[0].size() == nbasis ? "\033[32mMatch\033[0m" : "\033[31mUnmatch\033[0m"));
+			   (coeffshost[0].size() == nbasis ? "\033[32mMatch\033[0m" : "\033[31mUnmatch\033[0m"));
 		cudaMemcpy(coeffs, coeffshost[0].data(), sizeof(float) * coeffshost[0].size(), cudaMemcpyHostToDevice);
 		cuda_error_check;
 		config.winit = cfg::InitWay::randcenter;
@@ -269,7 +286,7 @@ void randTri(Tensor<T> rho, cfg::HomoConfig config) {
 	coeffvec[0].resize(nbasis);
 	cudaMemcpy(coeffvec->data(), coeffs, sizeof(float) * nbasis, cudaMemcpyDeviceToHost);
 	homoutils::writeVectors(getPath("coeff"), coeffvec);
-	randTribase_sincos_kernel << <grid_size, block_size >> > (view, n_period, coeffs, config.winit == cfg::InitWay::randcenter);
+	randTribase_sincos_kernel<<<grid_size, block_size>>>(view, n_period, coeffs, config.winit == cfg::InitWay::randcenter);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 	size_t siz = view.size();
@@ -291,10 +308,13 @@ void randTri(Tensor<T> rho, cfg::HomoConfig config) {
 			return x;
 		};
 		float s = sequence_sum(ker, siz, 0.f) / siz;
-		float rel_err = abs(s - volGoal) / volGoal ;
-		if (rel_err < 1e-3)  break;
-		if (s > volGoal) t_l = t;
-		if (s < volGoal) t_u = t;
+		float rel_err = abs(s - volGoal) / volGoal;
+		if (rel_err < 1e-3)
+			break;
+		if (s > volGoal)
+			t_l = t;
+		if (s < volGoal)
+			t_u = t;
 		printf("searching level set isovalue t = %4.2e , v = %4.2f%% , it = %d   \n", t, s * 100, iter);
 	}
 	printf("\n");
@@ -310,17 +330,21 @@ void randTri(Tensor<T> rho, cfg::HomoConfig config) {
 }
 
 struct ConvergeChecker {
-private:
+  private:
 	constexpr static int circleLen = 10;
 	double thres = 1e-3;
 	double Obj[circleLen];
 	int p_cir = 0;
-private:
+
+  private:
 	int cirId(int id) {
-		while (id < 0) id += circleLen;
+		while (id < 0)
+			id += circleLen;
 		return id % circleLen;
 	}
-	double get(int id) { return Obj[cirId(id)]; }
+	double get(int id) {
+		return Obj[cirId(id)];
+	}
 	bool checkSeq(void) {
 		bool outThres = false;
 		// the change ratio is less than threshold for continous 3 iterations
@@ -329,8 +353,10 @@ private:
 		}
 		return !outThres;
 	}
-public:
-	ConvergeChecker(double thres_ = 1e-3) : thres(thres_) {}
+
+  public:
+	ConvergeChecker(double thres_ = 1e-3)
+		: thres(thres_) {}
 	bool is_converge(int iter, double obj) {
 		int eid = cirId(iter);
 		p_cir = eid;
@@ -342,7 +368,4 @@ public:
 	}
 };
 
-
 void initDensity(var_tsexp_t<>& rho, cfg::HomoConfig config);
-
-

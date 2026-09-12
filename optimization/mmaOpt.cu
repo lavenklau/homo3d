@@ -2,8 +2,6 @@
 
 #define __CUDACC__
 #include "cuda.h"
-#include "helper_cuda.h"
-#include "helper_math.h"
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 #include "cuda_texture_types.h"
@@ -21,9 +19,7 @@ using namespace culib;
 
 extern void solveLinearHost(int nconstrain, const double* Alamhost, const double* ahost, double zet, double z, const double* bb, double* xhost);
 
-
-void test_gVector(void)
-{
+void test_gVector(void) {
 	char cbuf[100];
 #if 0
 	gv::gVector<double> v1(20);
@@ -55,12 +51,10 @@ void test_gVector(void)
 #elif 0
 	gv::gVector<double> v1(100000);
 	v1.set(1);
-	v1.concat(v1 + 1).concat(v1 + 2).toMatlab("v1s");
+	v1.concat(v1 + 1).concat(v1 + 2);
 	v1.pitchSumInPlace(1, 10000, 20000, true);
-	v1.toMatlab("v1");
 	gv::gVector<double> v2(1000);
 	v1.gatherPitch(v2.data(), 1, 5, 20000, 1);
-	v2.toMatlab("v2");
 	scanf_s("%s", cbuf);
 #elif 0
 	double* tmp;
@@ -71,7 +65,6 @@ void test_gVector(void)
 	v1.move(tmp, (nbytepitch / sizeof(double)) * 10);
 	v1.set(1);
 	v1.pitchSumInPlace(5, 10000, nbytepitch / sizeof(double));
-	v1.toMatlab("v1");
 	scanf_s("%s", cbuf);
 #elif 1
 	gv::gVector<double>::Init(1000);
@@ -79,7 +72,8 @@ void test_gVector(void)
 	size_t nbytepitch;
 	cudaMallocPitch(&tmp, &nbytepitch, 10000 * sizeof(double), 100);
 	int wordpitch = nbytepitch / sizeof(double);
-	std::cout << "-- nbyte = " << nbytepitch << ", " << "wordpitch = " << wordpitch << std::endl;
+	std::cout << "-- nbyte = " << nbytepitch << ", "
+			  << "wordpitch = " << wordpitch << std::endl;
 	gv::gVector<double> v1;
 	v1.move(tmp, nbytepitch / sizeof(double) * 100);
 	v1.set(0.5);
@@ -89,18 +83,15 @@ void test_gVector(void)
 	gv::gVector<double> v3 /*= v1 * v2.dup(100, 10000, wordpitch)*/;
 	v3 = v1 * 2;
 	v3.pitchSumInPlace(4, 10000, wordpitch);
-	v3.toMatlab("v3");
 	gv::gVector<double> v4(100);
 	v3.gatherPitch(v4.data(), 1, 100, wordpitch, 1);
-	v4.toMatlab("v4");
 #endif
 }
 template<int N>
 __host__ __device__ int round(int n) {
 	if (n % N == 0) {
 		return n;
-	}
-	else {
+	} else {
 		int rn = (n + (N - 1)) / N * N;
 		return rn;
 	}
@@ -121,9 +112,7 @@ __device__ void blockReduce(volatile T* sdata) {
 	}
 }
 
-
-
-template<typename Scalar, typename WT, int BlockSize, int BatchSize/*, bool RowMajor = true*/>
+template<typename Scalar, typename WT, int BlockSize, int BatchSize /*, bool RowMajor = true*/>
 __global__ void matrix_mult_selfadjoint_rowmajor(
 	const Scalar* pdata, int nwordvalid, int nwordpitch,
 	int npitch, const WT* weight, Scalar* dst, int ndstwordpitch) {
@@ -217,7 +206,7 @@ __global__ void matrix_mult_selfadjoint_rowmajor(
 			// load At matrix block elements
 			for (int j = 0; j < BatchSize; j++) {
 				int colid = j + batchColoffset;
-				Scalar  at = 0;
+				Scalar at = 0;
 				if (validindex && colid < npitch) {
 					at = pdata[eid + colid * nwordpitch];
 				}
@@ -316,15 +305,14 @@ __global__ void matrix_mult_selfadjoint_rowmajor(
 #endif
 }
 
-
-template<typename Scalar, typename WT, int BlockSize, int BatchSize/*, bool RowMajor = true*/>
+template<typename Scalar, typename WT, int BlockSize, int BatchSize /*, bool RowMajor = true*/>
 void matrix_AAt_rowmajor(const Scalar* pdata, int nwordvalid, int nwordpitch, int npitch, const WT* weight, Scalar* dst, int ndstwordpitch) {
 	int nblockStride = gv::round<BlockSize>(nwordvalid) / BlockSize;
 
 	int nbatch = gv::round<BatchSize>(npitch) / BatchSize;
 
 	int nblock = nblockStride /** nbatch*/;
-	
+
 	size_t ndstpitch;
 	Scalar* tmp_data;
 	cudaMallocPitch(&tmp_data, &ndstpitch, nblockStride * sizeof(Scalar), npitch * npitch);
@@ -345,7 +333,7 @@ void matrix_AAt_rowmajor(const Scalar* pdata, int nwordvalid, int nwordpitch, in
 		int col = eid % npitch;
 		int k = col + row * ndstwordpitch;
 		dst[k] = tmp_data[(col + row * npitch) * (ndstpitch / sizeof(Scalar))];
-	};	
+	};
 	parallel_do(npitch * npitch, 512, gather);
 }
 
@@ -357,9 +345,7 @@ std::tuple<gv::gVector<double>, double, double> kktcheck(
 	const gv::gVector<double>& xmin, const gv::gVector<double>& xmax,
 	const gv::gVector<double>& df0dx, const gv::gVector<double>& gval, const gv::gVector<double>& dgdx,
 	int wordPitch,
-	double a0, const gv::gVector<double>& a, const gv::gVector<double>& b, const gv::gVector<double>& c, const gv::gVector<double>& d
-	)
-{
+	double a0, const gv::gVector<double>& a, const gv::gVector<double>& b, const gv::gVector<double>& c, const gv::gVector<double>& d) {
 	gv::gVector<double> dgdxtmp(dgdx);
 	dgdxtmp.weightedPitchSumInPlace(4, nvar, wordPitch, lam.data(), true);
 	gv::gVector<double> rex = df0dx + dgdxtmp.slice(0, nvar) - xsi + eta;
@@ -381,11 +367,10 @@ void update_pqlambda_gvec(
 	int nconstrain, int nvar,
 	const gv::gVector<double>& uxinv1, const gv::gVector<double>& xlinv1,
 	const gv::gVector<double>& p0, const gv::gVector<double>& q0,
-	const gv::gVector<double>& P, const gv::gVector<double> & Q,
+	const gv::gVector<double>& P, const gv::gVector<double>& Q,
 	const gv::gVector<double>& lam,
 	gv::gVector<double>& plam, gv::gVector<double>& qlam,
-	gv::gVector<double>& gmat, gv::gVector<double>& gvec
-) {
+	gv::gVector<double>& gmat, gv::gVector<double>& gvec) {
 	cuda_error_check;
 	int Pwordpitch = P.size() / nconstrain;
 	int Qwordpitch = Q.size() / nconstrain;
@@ -408,38 +393,36 @@ void update_pqlambda_gvec(
 	};
 	parallel_do(nvar, 512, kernel);
 	// update gvector
-	//gmat.set(0.);// delete here 
+	//gmat.set(0.);// delete here
 	gmat = P * uxinv1.dup(nconstrain, nvar, Pwordpitch) + Q * xlinv1.dup(nconstrain, nvar, Qwordpitch);
 	gmat.pitchSumInPlace(4, nvar, Pwordpitch);
 	gmat.gatherPitch(gvec.data(), 1, nconstrain, Pwordpitch, 1);
 	cuda_error_check;
-
 }
 
 typedef std::tuple<
 	gv::gVector<double>, gv::gVector<double>, double,
 	gv::gVector<double>, gv::gVector<double>, gv::gVector<double>,
-	gv::gVector<double>, double, gv::gVector<double>
-> mma_arg_pack;
+	gv::gVector<double>, double, gv::gVector<double>>
+	mma_arg_pack;
 
-	//return std::make_tuple(
-	//	std::move(x), std::move(y), std::move(z),
-	//	std::move(lam), std::move(xsi), std::move(eta),
-	//	std::move(mu), std::move(zet), std::move(s));
+//return std::make_tuple(
+//	std::move(x), std::move(y), std::move(z),
+//	std::move(lam), std::move(xsi), std::move(eta),
+//	std::move(mu), std::move(zet), std::move(s));
 mma_arg_pack subsolv_g(int nconstrain, int nvar, double epsimin,
-	const gv::gVector<double>& low, const gv::gVector<double>& upp,
-	const gv::gVector<double>& alfa, const gv::gVector<double>& beta,
-	const gv::gVector<double>& p0, const gv::gVector<double>& q0,
-	const gv::gVector<double>& P, const gv::gVector<double>& Q,
-	int Pwordpitch, int Qwordpitch,
-	double a0, const gv::gVector<double>& a, const gv::gVector<double>& b, const gv::gVector<double>& c, const gv::gVector<double>& d
-) {
+					   const gv::gVector<double>& low, const gv::gVector<double>& upp,
+					   const gv::gVector<double>& alfa, const gv::gVector<double>& beta,
+					   const gv::gVector<double>& p0, const gv::gVector<double>& q0,
+					   const gv::gVector<double>& P, const gv::gVector<double>& Q,
+					   int Pwordpitch, int Qwordpitch,
+					   double a0, const gv::gVector<double>& a, const gv::gVector<double>& b, const gv::gVector<double>& c, const gv::gVector<double>& d) {
 	typedef gv::gVector<double> gVector;
 	gVector x = 0.5 * (alfa + beta);
 
 	double z = 1; // 1
 	//double y = 1; // m
-	
+
 	gVector lam(nconstrain);
 	lam.set(1);
 	gVector y(nconstrain);
@@ -480,7 +463,7 @@ mma_arg_pack subsolv_g(int nconstrain, int nvar, double epsimin,
 	// step vector
 	gVector dlam(nconstrain), dy(nconstrain), dmu(nconstrain), ds(nconstrain);
 	gVector dx(nvar), dxsi(nvar), deta(nvar);
-	double dz,dzet;
+	double dz, dzet;
 	gVector xold(nvar), xsiold(nvar), etaold(nvar);
 	gVector lamold(nconstrain), yold(nconstrain), muold(nconstrain), sold(nconstrain);
 	double zold, zetold;
@@ -501,14 +484,11 @@ mma_arg_pack subsolv_g(int nconstrain, int nvar, double epsimin,
 	std::vector<double> ahost(nconstrain);
 
 #ifdef DEBUG_MMA_OPT
-	P.toMatlab("P");
-	Q.toMatlab("Q");
 #endif
 
 	while (epsi > epsimin) {
 
 #ifdef DEBUG_MMA_OPT
-		x.toMatlab("x");
 #endif
 
 		ux1 = upp - x;
@@ -519,21 +499,17 @@ mma_arg_pack subsolv_g(int nconstrain, int nvar, double epsimin,
 		xlinv1 = 1. / xl1;
 
 		std::cout << "-- epsi = " << epsi;
-		
+
 		cuda_error_check;
 		// update plambda, qlambda, gvec
 		update_pqlambda_gvec(nconstrain, nvar, uxinv1, xlinv1, p0, q0, P, Q, lam, plam, qlam, gmat, gvec);
 
 #ifdef DEBUG_MMA_OPT
-		gvec.toMatlab("gvec");
-		plam.toMatlab("plam");
-		qlam.toMatlab("qlam");
 #endif
 
 		dpsidx = plam / ux2 - qlam / xl2;
 
 #ifdef DEBUG_MMA_OPT
-		dpsidx.toMatlab("dpsidx");
 #endif
 
 		// residual
@@ -550,13 +526,6 @@ mma_arg_pack subsolv_g(int nconstrain, int nvar, double epsimin,
 
 		// DEBUG
 		{
-			//rex.toMatlab("rex");
-			//rey.toMatlab("rey");
-			//relam.toMatlab("relam");
-			//rexsi.toMatlab("rexsi");
-			//reeta.toMatlab("reeta");
-			//remu.toMatlab("remu");
-			//res.toMatlab("res");
 		}
 
 		// residual norm
@@ -601,19 +570,6 @@ mma_arg_pack subsolv_g(int nconstrain, int nvar, double epsimin,
 #ifdef DEBUG_MMA_OPT
 			// DEBUG
 			{
-				x.toMatlab("x");
-				y.toMatlab("y");
-				a.toMatlab("a");
-				b.toMatlab("b");
-				lam.toMatlab("lam");
-				xsi.toMatlab("xsi");
-				eta.toMatlab("eta");
-				mu.toMatlab("mu");
-				s.toMatlab("s");
-				gvec.toMatlab("gvec");
-				delx.toMatlab("delx");
-				dely.toMatlab("dely");
-				dellam.toMatlab("dellam");
 			}
 #endif
 
@@ -632,14 +588,6 @@ mma_arg_pack subsolv_g(int nconstrain, int nvar, double epsimin,
 			blam = dellam + dely / diagy - GGxx;
 			bb = blam.concat(delz);
 			//std::cout << "-- log " << __LINE__ << std::endl;
-			
-			//diagx.toMatlab("diagx");
-			//GG.toMatlab("gg");
-			//bb.toMatlab("bb");
-			//diagy.toMatlab("diagy");
-			//diagxinv.toMatlab("diagxinv");
-			//diaglamyi.toMatlab("diaglamyi");
-			//blam.toMatlab("blam");
 
 			//bbhost(nconstrain + 1);
 			bb.get(bbhost.data(), nconstrain + 1);
@@ -649,18 +597,15 @@ mma_arg_pack subsolv_g(int nconstrain, int nvar, double epsimin,
 				//std::cout << "-- log " << __LINE__ << std::endl;
 				matrix_AAt_rowmajor<double, double, 512, 1>(GG.data(), nvar, Pwordpitch, nconstrain, diagxinv.data(), Alam.data(), nconstrain);
 
-				//Alam.toMatlab("Alam");
-
 				double* Alam_data = Alam.data();
 				auto add_diag_kernel = [=] __device__(int eid) {
 					Alam_data[eid + eid * nconstrain] += diaglamyi.eval(eid);
 					return;
-				};	
+				};
 				parallel_do(nconstrain, 512, add_diag_kernel);
 
 				//std::cout << "-- log " << __LINE__ << std::endl;
 #ifdef DEBUG_MMA_OPT
-				Alam.toMatlab("Alam");
 #endif
 
 				//std::vector<double> Alam_host(Alam.size());
@@ -675,11 +620,8 @@ mma_arg_pack subsolv_g(int nconstrain, int nvar, double epsimin,
 				GGdelxdiagx.weightedPitchSumInPlace(4, nvar, Pwordpitch, dlam.data(), true);
 				dx = -delx / diagx - GGdelxdiagx.slice(0, nvar) / diagx;
 #ifdef DEBUG_MMA_OPT
-				GGdelxdiagx.slice(0, nvar).toMatlab("gg");
-				GGdelxdiagx.slice(0, nvar).toMatlab("ggslice");
-				dlam.toMatlab("dlam");
-				delx.toMatlab("delx");
-				diagx.toMatlab("diagx");
+				GGdelxdiagx.slice(0, nvar);
+				GGdelxdiagx.slice(0, nvar);
 #endif
 			} else {
 				std::cerr << "large number of constrain are not supported" << std::endl;
@@ -693,12 +635,6 @@ mma_arg_pack subsolv_g(int nconstrain, int nvar, double epsimin,
 			dzet = -zet + epsi / z - zet * dz / z;
 			ds = -s + epsi / lam - (s * dlam) / lam;
 #ifdef DEBUG_MMA_OPT
-			dx.toMatlab("dx");
-			dy.toMatlab("dy");
-			dxsi.toMatlab("dxsi");
-			deta.toMatlab("deta");
-			dmu.toMatlab("dmu");
-			ds.toMatlab("ds");
 #endif
 			auto xx = y.concat(z).concat(lam).concat(xsi).concat(eta).concat(mu).concat(zet).concat(s);
 			auto dxx = dy.concat(dz).concat(dlam).concat(dxsi).concat(deta).concat(dmu).concat(dzet).concat(ds);
@@ -715,7 +651,11 @@ mma_arg_pack subsolv_g(int nconstrain, int nvar, double epsimin,
 			double stminv = (std::max)(stmalbexx, 1.);
 			double steg = 1.0 / stminv;
 
-			if (isnan(steg)) { std::cout << "\033[31m" << "-- NaN step occurred! " << "\033[0m" << std::endl; }
+			if (isnan(steg)) {
+				std::cout << "\033[31m"
+						  << "-- NaN step occurred! "
+						  << "\033[0m" << std::endl;
+			}
 
 			// - - -
 			xold = x;
@@ -746,16 +686,10 @@ mma_arg_pack subsolv_g(int nconstrain, int nvar, double epsimin,
 				uxinv1 = 1 / (upp - x);
 				xlinv1 = 1 / (x - low);
 				update_pqlambda_gvec(nconstrain, nvar, uxinv1, xlinv1, p0, q0, P, Q, lam, plam, qlam, gmat, gvec);
-//#ifdef DEBUG_MMA_OPT
-				//x.toMatlab("x");
-				//uxinv1.toMatlab("uxinv1");
-				//xlinv1.toMatlab("xlinv1");
-				//plam.toMatlab("plam");
-				//qlam.toMatlab("qlam");
-				//gvec.toMatlab("gvec");
-//#endif
+				//#ifdef DEBUG_MMA_OPT
+				//#endif
 				dpsidx = plam / (ux1 * ux1) - qlam / (xl1 * xl1);
-				
+
 				rex = dpsidx - xsi + eta;
 				rey = c + d * y - mu - lam;
 				rez = a0 - zet - a.dot(lam);
@@ -772,42 +706,13 @@ mma_arg_pack subsolv_g(int nconstrain, int nvar, double epsimin,
 				steg /= 2;
 
 #ifdef DEBUG_MMA_OPT
-				residu.toMatlab("residu");
-				rex.toMatlab("rex");
-				rey.toMatlab("rey");
-				relam.toMatlab("relam");
-				rexsi.toMatlab("rexsi");
-				reeta.toMatlab("reeta");
-				remu.toMatlab("remu");
-				res.toMatlab("res");
-				dpsidx.toMatlab("dpsidx");
 #endif
 			}
 
 			//if (mma_iter == 1 && (itto >= 50 || itto != nlineSearchStep[lsindex])) {
-			//	printf("line search failed\n"); 
+			//	printf("line search failed\n");
 			//	std::cout << "-- ittt = " << ittt << ", " << "residunorm = " << residunorm << std::endl;
 			//	std::cout << "-- step " << steg << ", initial step = " << 1. / stminv << std::endl;
-			//	xold.toMatlab("xold");
-			//	yold.toMatlab("yold");
-			//	dx.toMatlab("dx");
-			//	dy.toMatlab("dy");
-			//	GG.toMatlab("GG");
-			//	residu.toMatlab("residu");
-			//	Alam.toMatlab("Alam");
-			//	blam.toMatlab("blam");
-			//	delx.toMatlab("delx");
-			//	dellam.toMatlab("dellam");
-			//	dely.toMatlab("dely");
-			//	gvec.toMatlab("gvec");
-			//	gvec0.toMatlab("gvec0");
-			//	diagx.toMatlab("diagx");
-			//	delx.toMatlab("delx");
-			//	GGxx.toMatlab("GGxx");
-			//	diagy.toMatlab("diagy");
-			//	bb.toMatlab("bb");
-			//	diaglamyi.toMatlab("diaglamyi");
-			//	lamold.toMatlab("lamold");
 			//}
 			//lsindex++;
 
@@ -829,17 +734,15 @@ mma_arg_pack subsolv_g(int nconstrain, int nvar, double epsimin,
 		std::move(mu), std::move(zet), std::move(s));
 }
 
-
 // return updated x, low_g and upp_g are updated in place
 gv::gVector<double> mmasub_ker(int nconstrain, int nvar,
-	int itn, gv::gVector<double>& xvar_g,
-	gv::gVector<double>& xmin_g, gv::gVector<double>& xmax_g,
-	gv::gVector<double>& xold1_g, gv::gVector<double>& xold2_g,
-	double f0val, gv::gVector<double>& df0dx_g, gv::gVector<double>& gval_g, gv::gVector<double>& dgdx_g,
-	gv::gVector<double>& low_g, gv::gVector<double>& upp_g,
-	double a0, gv::gVector<double>& a_g, gv::gVector<double>& c_g, gv::gVector<double>& d_g,
-	double move, int dgdxvarpitch
-) {
+							   int itn, gv::gVector<double>& xvar_g,
+							   gv::gVector<double>& xmin_g, gv::gVector<double>& xmax_g,
+							   gv::gVector<double>& xold1_g, gv::gVector<double>& xold2_g,
+							   double f0val, gv::gVector<double>& df0dx_g, gv::gVector<double>& gval_g, gv::gVector<double>& dgdx_g,
+							   gv::gVector<double>& low_g, gv::gVector<double>& upp_g,
+							   double a0, gv::gVector<double>& a_g, gv::gVector<double>& c_g, gv::gVector<double>& d_g,
+							   double move, int dgdxvarpitch) {
 	using gVector = gv::gVector<double>;
 
 	size_t nvarpitch = dgdxvarpitch;
@@ -860,16 +763,13 @@ gv::gVector<double> mmasub_ker(int nconstrain, int nvar,
 	if (itn <= 2) {
 		low_g = xvar_g - asyinit * (xmax_g - xmin_g);
 		upp_g = xvar_g + asyinit * (xmax_g - xmin_g);
-	}
-	else {
+	} else {
 		auto zzz = (xvar_g - xold1_g) * (xold1_g - xold2_g);
 		factor.set(zzz > 0, asyincr);
 		factor.set(zzz < 0, asydecr);
 		low_g = xvar_g - factor * (xold1_g - low_g);
 		upp_g = xvar_g + factor * (upp_g - xold1_g);
 #ifdef DEBUG_MMA_OPT
-		low_g.toMatlab("low");
-		upp_g.toMatlab("upp");
 #endif
 		lowmin = xvar_g - 10 * (xmax_g - xmin_g);
 		lowmax = xvar_g - 0.01 * (xmax_g - xmin_g);
@@ -880,27 +780,21 @@ gv::gVector<double> mmasub_ker(int nconstrain, int nvar,
 		upp_g.minimize(uppmax);
 		upp_g.maximize(uppmin);
 #ifdef DEBUG_MMA_OPT
-		factor.toMatlab("factor");
 #endif
 	}
 
 #ifdef DEBUG_MMA_OPT
-	low_g.toMatlab("low");
-	upp_g.toMatlab("upp");
-	xvar_g.toMatlab("xvar");
 #endif
 
 	auto zzz1 = low_g + albefa * (xvar_g - low_g);
 	auto zzz2 = xvar_g - move * (xmax_g - xmin_g);
 	auto zzz = zzz1.max(zzz2);
 	gVector alfa = zzz.max(xmin_g);
-	//alfa.toMatlab("alfa");
 
 	auto zzz11 = upp_g - albefa * (upp_g - xvar_g);
 	auto zzz22 = xvar_g + move * (xmax_g - xmin_g);
 	auto zzzz = zzz11.min(zzz22);
 	gVector beta = zzzz.min(xmax_g);
-	//beta.toMatlab("beta");
 
 	auto xmami = (xmax_g - xmin_g).max(1e-5);
 	auto xmamiinv = 1. / xmami;
@@ -919,18 +813,15 @@ gv::gVector<double> mmasub_ker(int nconstrain, int nvar,
 	gVector q0 = ((-df0dx_g).max(0) + pq0) * xl2;
 
 #ifdef DEBUG_MMA_OPT
-	pq0.toMatlab("pq0");
 #endif
 
 	gVector P = dgdx_g.max(0);
 	gVector Q = (-dgdx_g).max(0);
 
 #ifdef DEBUG_MMA_OPT
-	P.toMatlab("P");
-	Q.toMatlab("Q");
 #endif
 
-	// add PQ 
+	// add PQ
 	{
 		double* Pdata = P.data();
 		double* Qdata = Q.data();
@@ -950,10 +841,6 @@ gv::gVector<double> mmasub_ker(int nconstrain, int nvar,
 	}
 
 #ifdef DEBUG_MMA_OPT
-	uxinv.toMatlab("uxinv");
-	xlinv.toMatlab("xlinv");
-	P.toMatlab("P");
-	Q.toMatlab("Q");
 #endif
 
 	gVector bmat(P);
@@ -982,20 +869,14 @@ gv::gVector<double> mmasub_ker(int nconstrain, int nvar,
 	}
 
 #ifdef DEBUG_MMA_OPT
-	b.toMatlab("b");
-	p0.toMatlab("p0");
-	q0.toMatlab("q0");
-	a_g.toMatlab("a");
-	c_g.toMatlab("c");
-	d_g.toMatlab("d");
 #endif
-	
+
 	//return std::make_tuple(
 	//	std::move(x), std::move(y), std::move(z),
 	//	std::move(lam), std::move(xsi), std::move(eta),
 	//	std::move(mu), std::move(zet), std::move(s));
 
-	auto[x, y, z, lam, xsi, eta, mu, zet, s] = subsolv_g(
+	auto [x, y, z, lam, xsi, eta, mu, zet, s] = subsolv_g(
 		nconstrain, nvar, epsimin,
 		low_g, upp_g,
 		alfa, beta,
@@ -1005,26 +886,17 @@ gv::gVector<double> mmasub_ker(int nconstrain, int nvar,
 		a0, a_g, b, c_g, d_g);
 
 #ifdef DEBUG_MMA_OPT
-	x.toMatlab("xnew");
-	y.toMatlab("ynew");
-	lam.toMatlab("lamnew");
-	xsi.toMatlab("xsinew");
-	eta.toMatlab("etanew");
-	mu.toMatlab("munew");
-	s.toMatlab("snew");
 #endif
-	
-	return x;
 
+	return x;
 }
 
 void mmasub_g(int nconstrain, int nvar,
-	int itn, double* xvar, double* xmin, double* xmax, double* xold1, double* xold2,
-	double f0val, double* df0dx, double* gval, cudaPitchedPtr dgdx,
-	double* low, double* upp,
-	double a0, double* a, double* c, double* d,
-	double move
-) {
+			  int itn, double* xvar, double* xmin, double* xmax, double* xold1, double* xold2,
+			  double f0val, double* df0dx, double* gval, cudaPitchedPtr dgdx,
+			  double* low, double* upp,
+			  double a0, double* a, double* c, double* d,
+			  double move) {
 	gv::gVector<double>::Init();
 
 	typedef gv::gVector<double> gVector;
@@ -1041,34 +913,32 @@ void mmasub_g(int nconstrain, int nvar,
 	gVectorMap gval_g(gval, nconstrain);
 
 	gVectorMap dgdx_g((double*)dgdx.ptr, dgdx.pitch / sizeof(double) * nconstrain);
-	
+
 	gVectorMap low_g(low, nvar), upp_g(upp, nvar);
 
 	gVectorMap a_g(a, nconstrain), c_g(c, nconstrain), d_g(d, nconstrain);
 
 	auto x = mmasub_ker(nconstrain, nvar, itn,
-		xvar_g, xmin_g, xmax_g, xold1_g, xold2_g,
-		f0val, df0dx_g, gval_g, dgdx_g,
-		low_g, upp_g, a0, a_g, c_g, d_g,
-		move, dgdx.pitch);
+						xvar_g, xmin_g, xmax_g, xold1_g, xold2_g,
+						f0val, df0dx_g, gval_g, dgdx_g,
+						low_g, upp_g, a0, a_g, c_g, d_g,
+						move, dgdx.pitch);
 
 	cudaMemcpy(xold2, xold1, sizeof(double) * nvar, cudaMemcpyDeviceToDevice);
 	cudaMemcpy(xold1, xvar, sizeof(double) * nvar, cudaMemcpyDeviceToDevice);
 	cudaMemcpy(xvar, x.data(), x.size() * sizeof(double), cudaMemcpyDeviceToDevice);
-	
+
 	// low upp are already mapped
 	//low_g.get(low, nvar);
 	//upp_g.get(upp, nvar);
 }
 
 void mmasub_h(int nconstrain, int nvar,
-	int itn, double* xvar, double* xmin, double* xmax, double* xold1, double* xold2,
-	double f0val, double* df0dx, double* gval, double* dgdx,
-	double* low, double* upp,
-	double a0, double* a, double* c, double* d,
-	double move
-) 
-{
+			  int itn, double* xvar, double* xmin, double* xmax, double* xold1, double* xold2,
+			  double f0val, double* df0dx, double* gval, double* dgdx,
+			  double* low, double* upp,
+			  double a0, double* a, double* c, double* d,
+			  double move) {
 	gv::gVector<double>::Init();
 
 	typedef gv::gVector<double> gVector;
@@ -1095,8 +965,10 @@ void mmasub_h(int nconstrain, int nvar,
 	cudaMallocPitch(&gx, &nvarpitch, sizeof(double) * nvar, nconstrain);
 	cudaMemcpy2D(gx, nvarpitch, dgdx, nvar * sizeof(double), sizeof(double) * nvar, nconstrain, cudaMemcpyHostToDevice);
 	cuda_error_check;
+	// dgdx_g deep-copies the pitched buffer, so gx can be released right away.
 	gVector dgdx_g(gv::gVectorMap<double>(gx, nvarpitch / sizeof(double) * nconstrain));
-	
+	cudaFree(gx);
+	cuda_error_check;
 
 	gVector low_g(nvar), upp_g(nvar);
 	low_g.set(low);
@@ -1108,10 +980,10 @@ void mmasub_h(int nconstrain, int nvar,
 	d_g.set(d);
 
 	auto x = mmasub_ker(nconstrain, nvar, itn,
-		xvar_g, xmin_g, xmax_g, xold1_g, xold2_g,
-		f0val, df0dx_g, gval_g, dgdx_g,
-		low_g, upp_g, a0, a_g, c_g, d_g,
-		move, nvarpitch);
+						xvar_g, xmin_g, xmax_g, xold1_g, xold2_g,
+						f0val, df0dx_g, gval_g, dgdx_g,
+						low_g, upp_g, a0, a_g, c_g, d_g,
+						move, nvarpitch);
 
 	memcpy(xold2, xold1, sizeof(double) * nvar);
 	memcpy(xold1, xvar, sizeof(double) * nvar);
@@ -1119,7 +991,3 @@ void mmasub_h(int nconstrain, int nvar,
 	low_g.get(low, nvar);
 	upp_g.get(upp, nvar);
 }
-
-
-
-

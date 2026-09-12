@@ -4,45 +4,37 @@
 #include "cusparse.h"
 #include <vector>
 
-
 namespace culib {
-__host__ void make_kernel_param(dim3& grid_dim, dim3& block_dim, const dim3& num_tasks, int prefer_block_size) {
-	block_dim.x = prefer_block_size;
-	block_dim.y = prefer_block_size;
-	block_dim.z = prefer_block_size;
-	grid_dim.x = (num_tasks.x + prefer_block_size - 1) / prefer_block_size;
-	grid_dim.y = (num_tasks.y + prefer_block_size - 1) / prefer_block_size;
-	grid_dim.z = (num_tasks.z + prefer_block_size - 1) / prefer_block_size;
-}
 
-TempBuffer::TempBuffer(size_t size, bool unify /*= false*/) : unified(unify), siz(size) {
+TempBuffer::TempBuffer(size_t size, bool unify /*= false*/)
+	: unified(unify), siz(size) {
 	if (!unify) {
 		cudaMalloc(&pdata, size);
 		cuda_error_check;
-	}
-	else {
+	} else {
 		cudaMallocManaged(&pdata, size);
 		cuda_error_check;
 	}
 }
 
 TempBufferPlace::TempBufferPlace(TempBufferPool& pool, int bufid, std::unique_ptr<TempBuffer> tmp)
-	: pool_(pool), bufferid(bufid), buffer(std::move(tmp)) { }
+	: pool_(pool), bufferid(bufid), buffer(std::move(tmp)) {}
 TempBufferPlace::TempBufferPlace(TempBufferPlace&& place)
-	: pool_(place.pool_), bufferid(place.bufferid), buffer(std::move(place.buffer)) { }
+	: pool_(place.pool_), bufferid(place.bufferid), buffer(std::move(place.buffer)) {}
 
 TempBufferPlace::~TempBufferPlace(void) {
-	if (buffer) pool_[bufferid] = std::move(buffer);
+	if (buffer)
+		pool_[bufferid] = std::move(buffer);
 }
 
 ManagedTempBlock::ManagedTempBlock(ManagedTempBlock&& other)
 	: pool(other.pool), startBlock(other.startBlock), endBlock(other.endBlock) {
-	endBlock = -1;
+	other.startBlock = -1;
+	other.endBlock = -1;
 }
 
 ManagedTempBlock::ManagedTempBlock(TempBufferPool& pool_, int startBlock_, int endBlock_)
-	: pool(pool_), startBlock(startBlock_), endBlock(endBlock_)
-{
+	: pool(pool_), startBlock(startBlock_), endBlock(endBlock_) {
 	if (endBlock > pool.blockPlace32.size()) {
 		printf("\033[31Preallocated unified buffer is not enough\033[0m\n");
 		throw std::runtime_error("not enough unified memory");
@@ -59,7 +51,7 @@ ManagedTempBlock::~ManagedTempBlock(void) {
 }
 
 TempBufferPool::TempBufferPool(void) {
-	// preallocate enough temporary managed buffer, 
+	// preallocate enough temporary managed buffer,
 	int n32 = 1e4;
 	unifiedBuffer.reset(new TempBuffer(32 * n32, true));
 	blockPlace32.resize(n32, false);
@@ -71,7 +63,7 @@ TempBufferPlace TempBufferPool::getBuffer(size_t requireSize) {
 	for (int i = 0; i < buffers.size(); i++) {
 		if (buffers[i]) {
 			if (buffers[i]->siz >= requireSize) {
-				if (matchid<0 || buffers[matchid]->siz > buffers[i]->siz) {
+				if (matchid < 0 || buffers[matchid]->siz > buffers[i]->siz) {
 					matchid = i;
 				}
 			}
@@ -104,7 +96,17 @@ TempBufferPool& getTempPool(void) {
 	if (!Pool) {
 		Pool = std::make_unique<TempBufferPool>();
 	}
-	return *Pool; 
+	return *Pool;
+}
+
+void TempBufferPool::release(void) {
+	buffers.clear();
+	unifiedBuffer.reset();
+	blockPlace32.clear();
+}
+
+void freeTempPool(void) {
+	getTempPool().release();
 }
 
 void show_cuSolver_version(void) {
@@ -117,7 +119,6 @@ void show_cuSolver_version(void) {
 #else
 #endif
 }
-
 
 void init_cuda(void) {
 	get_device_info();
@@ -147,7 +148,7 @@ void use4Bytesbank(void) {
 		printf("\033[32m[CUDA] bank Width = 4\n\033[0m");
 	}
 }
-void use8Bytesbank(void){
+void use8Bytesbank(void) {
 	if (bankWidth != 8) {
 		bankWidth = 8;
 		cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
@@ -155,15 +156,12 @@ void use8Bytesbank(void){
 	}
 }
 
-
 void lib_test(void) {
-
 }
 
-int get_device_info()
-{
-	int device_count{ 0 };
-	// get number of devices 
+int get_device_info() {
+	int device_count{0};
+	// get number of devices
 	cudaGetDeviceCount(&device_count);
 	fprintf(stdout, "[GPU device Number]: %d\n", device_count);
 
@@ -181,8 +179,8 @@ int get_device_info()
 	fprintf(stdout, "- Enumerating Device...\n");
 	for (int dev = 0; dev < device_count; ++dev) {
 		fprintf(stdout, "---------------------------------------------------------------\n");
-		int driver_version{ 0 }, runtime_version{ 0 };
-		// set cuda execuation GPU 
+		int driver_version{0}, runtime_version{0};
+		// set cuda execuation GPU
 		cudaSetDevice(dev);
 		cudaDeviceProp device_prop;
 		cudaGetDeviceProperties(&device_prop, dev);
@@ -207,5 +205,4 @@ int get_device_info()
 	return 0;
 }
 
-}
-
+} // namespace culib
