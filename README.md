@@ -39,7 +39,30 @@ make -j4
 
 If the conda environment is activated, `cmake` will automatically checkout the dependencies in this environment.
 
+#### Windows (MSVC + vcpkg)
 
+The conda route above is Linux oriented: it relies on GCC specific flags and lets
+CMake build OpenVDB from source. On Windows, two helper scripts drive an
+equivalent build through MSVC and [vcpkg](https://github.com/microsoft/vcpkg):
+
+```bat
+configure_win.cmd   :: one-off configure step
+build_win.cmd       :: rebuild, repeatable
+```
+
+Both locate `vcvars64.bat` automatically with `vswhere`. Override through the
+environment when your setup differs:
+
+| Variable | Meaning | Default |
+| --- | --- | --- |
+| `VCVARS` | full path to `vcvars64.bat` | detected with `vswhere` |
+| `VCPKG_ROOT` | vcpkg installation root | `C:\vcpkg` |
+| `BUILD_DIR` | build directory | `<repo>\build` |
+| `JOBS` | parallel compile jobs | `4` |
+
+The vcpkg triplet is `x64-windows`. CMake prefers a prebuilt OpenVDB package and
+only falls back to fetching the v8.2.0 sources when none is installed, so the
+conda route keeps building OpenVDB itself as before.
 
 ### Usage
 

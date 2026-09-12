@@ -16,30 +16,38 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set (CMAKE_BUILD_TYPE "Release")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fpermissive")
+if(NOT MSVC)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fpermissive")
+  add_definitions(-w)
+endif()
 set(CMAKE_IGNORE_PATH "/mnt/c/Program Files/vcpkg/installed/x64-windows/share/gflags")
 set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 
-# disable all warning for clean output
-add_definitions(-w)
-
-include(FetchContent)
-# Fetch OpenVDB 8.2
-FetchContent_Declare(
-  openvdb
-#  GIT_REPOSITORY https://github.com/AcademySoftwareFoundation/openvdb
-#  GIT_TAG        v8.2.0 # release-1.10.0
-  URL https://github.com/AcademySoftwareFoundation/openvdb/archive/refs/tags/v8.2.0.tar.gz
-  URL_HASH MD5=2852fe7176071eaa18ab9ccfad5ec403
-)
-FetchContent_MakeAvailable(openvdb)
-message(STATUS "openvdb_SOURCE_DIR = ${openvdb_SOURCE_DIR} ")
-message(STATUS "openvdb_BINARY_DIR = ${openvdb_BINARY_DIR} ")
 find_package(Eigen3 REQUIRED)
 message(STATUS "Eigen directory ${EIGEN3_INCLUDE_DIRS}")
-# find_package(OpenVDB REQUIRED)
-# message(STATUS "OpenVDB include dir ${OpenVDB_INCLUDE_DIRS}")
-# message(STATUS "OpenVDB libraries ${OpenVDB_LIBRARIES}")
+
+# OpenVDB: prefer a prebuilt package (conda / vcpkg / system install), and fall
+# back to building v8.2.0 from source when no package is available. The conda
+# environment ships OpenVDB's *dependencies* but not OpenVDB itself, so the
+# sources route stays the default there.
+find_package(OpenVDB CONFIG QUIET)
+if(OpenVDB_FOUND)
+  message(STATUS "OpenVDB: using prebuilt package, target OpenVDB::openvdb")
+  set(HOMO3D_OPENVDB_TARGET OpenVDB::openvdb)
+else()
+  message(STATUS "OpenVDB: no prebuilt package found, building v8.2.0 from source")
+  include(FetchContent)
+  FetchContent_Declare(
+    openvdb
+    URL https://github.com/AcademySoftwareFoundation/openvdb/archive/refs/tags/v8.2.0.tar.gz
+    URL_HASH MD5=2852fe7176071eaa18ab9ccfad5ec403
+  )
+  FetchContent_MakeAvailable(openvdb)
+  message(STATUS "openvdb_SOURCE_DIR = ${openvdb_SOURCE_DIR} ")
+  message(STATUS "openvdb_BINARY_DIR = ${openvdb_BINARY_DIR} ")
+  set(HOMO3D_OPENVDB_TARGET openvdb_shared)
+endif()
+
 find_package(gflags REQUIRED)
 find_package(glm CONFIG REQUIRED)
 message(STATUS "glm dir = ${GLM_INCLUDE_DIRS}")
@@ -52,7 +60,6 @@ find_package(IlmBase REQUIRED)
 
 include_directories(${EIGEN3_INCLUDE_DIRS})
 include_directories(${CMAKE_SOURCE_DIR})
-include_directories(${CMAKE_SOURCE_DIR}/cuda_helper)
 
 enable_language(CUDA)
 
@@ -126,7 +133,6 @@ file(GLOB cppfiles
         culib/*.cpp
         gmem/*.cpp
         homogenization/*.cpp
-        matlab/*.cpp
         optimization/*.cpp
         voxelIO/*.cpp
     )
@@ -135,9 +141,10 @@ add_executable(homo3d ${cppfiles})
 target_include_directories(homo3d PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 set_target_properties(homo3d PROPERTIES CUDA_ARCHITECTURES "61;75;86")
 target_link_libraries(homo3d PRIVATE cubin)
-# target_link_libraries(homo3d PRIVATE OpenVDB::openvdb)
-target_include_directories(homo3d PUBLIC ${openvdb_SOURCE_DIR}/openvdb/openvdb)
-target_link_libraries(homo3d PRIVATE openvdb_shared)
+target_link_libraries(homo3d PRIVATE ${HOMO3D_OPENVDB_TARGET})
+if(NOT OpenVDB_FOUND)
+  target_include_directories(homo3d PUBLIC ${openvdb_SOURCE_DIR}/openvdb/openvdb)
+endif()
 target_link_libraries(homo3d PRIVATE IlmBase::Half)
 target_link_libraries(homo3d PRIVATE ${CUDA_LIBRARIES})
 target_link_libraries(homo3d PRIVATE ${CUDA_DRIVER_LIBRARY})
