@@ -7,16 +7,13 @@ namespace homo {
 
 struct uid_t {
   private:
-	static size_t uid;
+	static size_t uid_counter;
+	size_t uid;
 
   protected:
-	static void setUid(void) {
-		uid++;
-	};
-	uid_t(void) {
-		setUid();
-	}
-	size_t getUid(void) {
+	uid_t(void)
+		: uid(uid_counter++) {}
+	size_t getUid(void) const {
 		return uid;
 	}
 };

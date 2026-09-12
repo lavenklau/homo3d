@@ -8,15 +8,6 @@
 #include "type_traits"
 #include <algorithm>
 
-#define GVECTOR_WITH_MATLAB
-
-#if defined(GVECTOR_WITH_MATLAB)
-extern void pass_matrix_to_matlab(const char* namestr, float* pdata, int nrows, int ncols, int wordpitch, bool rowmajor = false);
-extern void pass_matrix_to_matlab(const char* namestr, double* pdata, int nrows, int ncols, int wordpitch, bool rowmajor = false);
-extern void pass_matrix_to_matlab(const char* namestr, int* pdata, int nrows, int ncols, int wordpitch, bool rowmajor = false);
-extern void pass_matrix_to_matlab(const char* namestr, bool* pdata, int nrows, int ncols, int wordpitch, bool rowmajor = false);
-#endif
-
 #define cuda_error_check                                                                                                                    \
 	do {                                                                                                                                    \
 		auto err = cudaGetLastError();                                                                                                      \
@@ -653,9 +644,13 @@ __global__ void min_graph_kernel(T* odata, size_t n, graph_t graph) {
 		odata[blockIdx.x] = sdata[0];
 }
 
-__host__ inline void make_kernel_param(size_t* block_num, size_t* block_size, size_t num_tasks, size_t prefer_block_size) {
-	*block_size = prefer_block_size;
-	*block_num = (num_tasks + prefer_block_size - 1) / prefer_block_size;
+// launch grid/block config for a 1D launch of num_tasks threads
+struct launch_config_t {
+	size_t grid;
+	size_t block;
+};
+inline launch_config_t make_kernel_param(size_t num_tasks, size_t prefer_block_size) {
+	return {(num_tasks + prefer_block_size - 1) / prefer_block_size, prefer_block_size};
 }
 
 // dump_array_sum makes original array dirty, make sure dump is large enough
@@ -666,19 +661,18 @@ T dump_array_sum(T* dump, size_t n) {
 		cudaMemcpy(&sum, dump, sizeof(T), cudaMemcpyDeviceToHost);
 		return sum;
 	}
-	size_t grid_dim, block_dim;
 	T* block_dump2 = dump;
 	T* block_dump1 = dump + ((n + 63) / 2 / 32) * 32;
 	do {
 #if 0
 			// input : dump1  output : dump2 
 			std::swap(block_dump1, block_dump2);
-			make_kernel_param(&grid_dim, &block_dim, n, blockSize);
-			block_sum_kernel<T, blockSize> << <grid_dim, block_dim >> > (block_dump1, block_dump2, n);
+			auto cfg = make_kernel_param(n, blockSize);
+			block_sum_kernel<T, blockSize> <<<cfg.grid, cfg.block>>> (block_dump1, block_dump2, n);
 			// error may occurred because of the inideal parallel block, the block result will overwrite latter data
 #else
-		make_kernel_param(&grid_dim, &block_dim, n, blockSize);
-		block_sum_kernel<T, blockSize><<<grid_dim, block_dim>>>(block_dump2, block_dump2, n);
+		auto cfg = make_kernel_param(n, blockSize);
+		block_sum_kernel<T, blockSize><<<cfg.grid, cfg.block>>>(block_dump2, block_dump2, n);
 		// if the early block is excuted first, latter data will not be overwritten
 #endif
 	} while ((n = (n + blockSize - 1) / blockSize) > 1);
@@ -689,9 +683,8 @@ T dump_array_sum(T* dump, size_t n) {
 template<typename T>
 T dot(const T* indata1, const T* indata2, T* dump_buf, size_t n, T* dot_dst = nullptr) {
 	constexpr int blockSize = 512;
-	size_t grid_dim, block_dim;
-	make_kernel_param(&grid_dim, &block_dim, n, blockSize);
-	block_dot_kernel<<<grid_dim, block_dim>>>(indata1, indata2, dump_buf, n);
+	auto cfg = make_kernel_param(n, blockSize);
+	block_dot_kernel<<<cfg.grid, cfg.block>>>(indata1, indata2, dump_buf, n);
 
 	if (n <= blockSize) {
 		T sum;
@@ -712,9 +705,8 @@ T dot(const T* indata1, const T* indata2, T* dump_buf, size_t n, T* dot_dst = nu
 template<typename T, int blockSize = 512>
 T parallel_max(const T* indata, T* dump, size_t array_size, T* max_dst = nullptr) {
 	//constexpr int blockSize = 512;
-	size_t grid_dim, block_dim;
-	make_kernel_param(&grid_dim, &block_dim, array_size, blockSize);
-	block_max_kernel<<<grid_dim, block_dim>>>(indata, dump, array_size);
+	auto cfg = make_kernel_param(array_size, blockSize);
+	block_max_kernel<<<cfg.grid, cfg.block>>>(indata, dump, array_size);
 
 	if (array_size <= blockSize) {
 		T max_num;
@@ -733,9 +725,8 @@ T parallel_max(const T* indata, T* dump, size_t array_size, T* max_dst = nullptr
 template<typename T>
 T parallel_maxabs(const T* indata, T* dump, size_t array_size, T* max_dst = nullptr) {
 	constexpr int blockSize = 512;
-	size_t grid_dim, block_dim;
-	make_kernel_param(&grid_dim, &block_dim, array_size, blockSize);
-	block_maxabs_kernel<<<grid_dim, block_dim>>>(indata, dump, array_size);
+	auto cfg = make_kernel_param(array_size, blockSize);
+	block_maxabs_kernel<<<cfg.grid, cfg.block>>>(indata, dump, array_size);
 
 	if (array_size <= blockSize) {
 		T max_num;
@@ -754,9 +745,8 @@ T parallel_maxabs(const T* indata, T* dump, size_t array_size, T* max_dst = null
 template<typename T>
 T parallel_min(const T* indata, T* dump, size_t array_size, T* min_dst = nullptr) {
 	constexpr int blockSize = 512;
-	size_t grid_dim, block_dim;
-	make_kernel_param(&grid_dim, &block_dim, array_size, blockSize);
-	block_min_kernel<<<grid_dim, block_dim>>>(indata, dump, array_size);
+	auto cfg = make_kernel_param(array_size, blockSize);
+	block_min_kernel<<<cfg.grid, cfg.block>>>(indata, dump, array_size);
 
 	if (array_size <= blockSize) {
 		T min_num;
@@ -775,9 +765,8 @@ T parallel_min(const T* indata, T* dump, size_t array_size, T* min_dst = nullptr
 template<typename T>
 T parallel_sum(const T* indata, T* dump, size_t array_size, T* sum_dst = nullptr) {
 	constexpr int blockSize = 512;
-	size_t grid_dim, block_dim;
-	make_kernel_param(&grid_dim, &block_dim, array_size, blockSize);
-	block_sum_kernel<<<grid_dim, block_dim>>>(indata, dump, array_size);
+	auto cfg = make_kernel_param(array_size, blockSize);
+	block_sum_kernel<<<cfg.grid, cfg.block>>>(indata, dump, array_size);
 
 	if (array_size <= blockSize) {
 		T array_sum;
@@ -802,10 +791,9 @@ T dump_max(T* dump, size_t n) {
 		cudaMemcpy(&max_num, dump, sizeof(T), cudaMemcpyDeviceToHost);
 		return max_num;
 	}
-	size_t grid_dim, block_dim;
 	do {
-		make_kernel_param(&grid_dim, &block_dim, n, blockSize);
-		block_max_kernel<T, blockSize><<<grid_dim, block_dim>>>(dump, dump, n);
+		auto cfg = make_kernel_param(n, blockSize);
+		block_max_kernel<T, blockSize><<<cfg.grid, cfg.block>>>(dump, dump, n);
 		//cudaDeviceSynchronize();
 		//cudaMemcpy(&max_num, dump, sizeof(T), cudaMemcpyDeviceToHost);
 		//std::cout << "current max num " << max_num << std::endl;
@@ -821,10 +809,9 @@ T dump_min(T* dump, size_t n) {
 		cudaMemcpy(&min_num, dump, sizeof(T), cudaMemcpyDeviceToHost);
 		return min_num;
 	}
-	size_t grid_dim, block_dim;
 	do {
-		make_kernel_param(&grid_dim, &block_dim, n, blockSize);
-		block_min_kernel<T, blockSize><<<grid_dim, block_dim>>>(dump, dump, n);
+		auto cfg = make_kernel_param(n, blockSize);
+		block_min_kernel<T, blockSize><<<cfg.grid, cfg.block>>>(dump, dump, n);
 		//cudaDeviceSynchronize();
 		//cudaMemcpy(&max_num, dump, sizeof(T), cudaMemcpyDeviceToHost);
 		//std::cout << "current max num " << max_num << std::endl;
@@ -835,10 +822,8 @@ T dump_min(T* dump, size_t n) {
 
 template<typename T>
 void init_array(T* dev_array, T value, int array_size) {
-	size_t grid_dim;
-	size_t block_dim;
-	make_kernel_param(&grid_dim, &block_dim, array_size, 512);
-	init_array_kernel<<<grid_dim, block_dim>>>(dev_array, value, array_size);
+	auto cfg = make_kernel_param(array_size, 512);
+	init_array_kernel<<<cfg.grid, cfg.block>>>(dev_array, value, array_size);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 }
@@ -891,6 +876,10 @@ class gVector {
   private:
 	Scalar* _data = nullptr;
 	size_t _size = 0;
+	// True when _data was allocated by this object and must therefore be freed
+	// by it. Views built through the protected (ptr, size) constructor do not
+	// own their storage and must never free it.
+	bool _owns = true;
 
 	void build(size_t dim);
 
@@ -901,16 +890,9 @@ class gVector {
 	friend void apply_vector(gVector& v1, const gVector& v2, Lambda func);
 
   protected:
+	// Non-owning view over storage that belongs to somebody else.
 	gVector(Scalar* data_ptr, size_t size)
-		: _data(data_ptr), _size(size) {}
-
-  protected:
-	auto& _Get_data(void) {
-		return _data;
-	}
-	auto& _Get_size(void) {
-		return _size;
-	}
+		: _data(data_ptr), _size(size), _owns(false) {}
 
   public:
 	Scalar*& data() {
@@ -925,9 +907,15 @@ class gVector {
 		return _size;
 	}
 
+	// Take ownership of an externally allocated buffer (e.g. cudaMallocPitch).
 	void move(Scalar* data_ptr, size_t size) {
+		if (_owns && _data != nullptr && _data != data_ptr) {
+			cudaFree(_data);
+			cuda_error_check;
+		}
 		_data = data_ptr;
 		_size = size;
+		_owns = true;
 	}
 
 	void clear(void);
@@ -954,12 +942,11 @@ class gVector {
 		if (expr_dim != _size) {
 			throw std::string("unmatched vector size !");
 		}
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, expr_dim, 512);
+		auto cfg = make_kernel_param(expr_dim, 512);
 		Scalar* pdata = _data;
 		expr_t filter = exprfilter;
 		expr_repl replval = repl_val;
-		replace_filter_kernel<<<grid_size, block_size>>>(pdata, expr_dim, filter, replval);
+		replace_filter_kernel<<<cfg.grid, cfg.block>>>(pdata, expr_dim, filter, replval);
 		cudaDeviceSynchronize();
 		cuda_error_check;
 	}
@@ -1016,9 +1003,11 @@ class gVector {
 		cuda_error_check;
 	}
 
-	virtual ~gVector(void) {
-		//cuda_error_check;
-		if (_data != nullptr) {
+	// Non-virtual on purpose: gVector is never deleted through a base pointer.
+	// Ownership is tracked by _owns so that views (gVectorMap) simply skip the
+	// free instead of having to null themselves out before this runs.
+	~gVector(void) {
+		if (_owns && _data != nullptr) {
 			cudaFree(_data);
 		}
 		cuda_error_check;
@@ -1027,12 +1016,6 @@ class gVector {
   public:
 	void resize(size_t dim) {
 		build(dim);
-	}
-
-	// for init, this version will not free buf
-	void resize(size_t dim, int) {
-		cudaMalloc(&_data, dim * sizeof(Scalar));
-		_size = dim;
 	}
 
   public:
@@ -1106,7 +1089,7 @@ class gVector {
 	template<typename expr_t, typename std::enable_if<is_expression<expr_t>::value, int>::type = 0>
 	gVector(const expr_t& expr) {
 		size_t expr_dim = expr.size();
-		resize(expr_dim, 0);
+		build(expr_dim);
 		expr.launch(_data, expr_dim);
 	}
 
@@ -1316,28 +1299,6 @@ class gVector {
 	static gVectorMap<Scalar> Map(Scalar* ptr, size_t size) {
 		return gVectorMap<Scalar>(ptr, size);
 	}
-
-#if defined(GVECTOR_WITH_MATLAB)
-	template<typename std::enable_if<
-				 std::is_same<Scalar, double>::value ||
-					 std::is_same<Scalar, float>::value ||
-					 std::is_same<Scalar, int>::value ||
-					 std::is_same<Scalar, bool>::value,
-				 int>::type = 0>
-	void toMatlab(const char* name) const {
-		pass_matrix_to_matlab(name, _data, _size, 1, _size, false);
-	}
-
-	template<typename std::enable_if<
-				 std::is_same<Scalar, double>::value ||
-					 std::is_same<Scalar, float>::value ||
-					 std::is_same<Scalar, int>::value ||
-					 std::is_same<Scalar, bool>::value,
-				 int>::type = 0>
-	void toMatlab(const char* name, int rows, int cols, int wordpicth, bool rowmajor) const {
-		pass_matrix_to_matlab(name, _data, rows, cols, wordpicth, rowmajor);
-	}
-#endif
 };
 
 template<typename Scalar>
@@ -1370,11 +1331,8 @@ class gVectorMap
 
 	gVectorMap(const gVectorMap& vm2) = delete;
 
-	~gVectorMap(void) override {
-		// Yeah, it's not elegant but works
-		Base::_Get_data() = nullptr;
-		Base::_Get_size() = 0;
-	}
+	// No destructor override needed: the view constructor clears _owns, so the
+	// base destructor already knows not to free somebody else's storage.
 };
 
 template<typename Scalar = float>
@@ -1418,12 +1376,13 @@ void gVector<Scalar>::build(size_t dim) {
 
 template<typename Scalar>
 void gVector<Scalar>::clear(void) {
-	if (_data == nullptr && _size == 0) {
-		return;
+	if (_owns && _data != nullptr) {
+		cudaFree(_data);
+		cuda_error_check;
 	}
-	cudaFree(_data);
 	_size = 0;
 	_data = nullptr;
+	_owns = true;
 }
 
 template<typename Lambda, typename Scalar>
@@ -1435,9 +1394,8 @@ void apply_vector(gVector<Scalar>& v1, const gVector<Scalar>& v2, Lambda func) {
 	auto merge = [=] __device__(int eid) {
 		v1data[eid] = func(v1data[eid], v2data[eid]);
 	};
-	size_t gridSize, blockSize;
-	make_kernel_param(&gridSize, &blockSize, v1.size(), 512);
-	traverse_noret<<<gridSize, blockSize>>>(v1.size(), merge);
+	auto cfg = make_kernel_param(v1.size(), 512);
+	traverse_noret<<<cfg.grid, cfg.block>>>(v1.size(), merge);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 }
@@ -1512,9 +1470,8 @@ const gVector<Scalar>& gVector<Scalar>::operator/=(const gVector<Scalar>& v2) {
 template<typename Scalar>
 const gVector<Scalar>& gVector<Scalar>::operator/=(Scalar s) {
 	Scalar* ptr = _data;
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, _size, 512);
-	gv::map<<<grid_size, block_size>>>(_data, size(), [=] __device__(int tid) { return ptr[tid] / s; });
+	auto cfg = make_kernel_param(_size, 512);
+	gv::map<<<cfg.grid, cfg.block>>>(_data, size(), [=] __device__(int tid) { return ptr[tid] / s; });
 	cudaDeviceSynchronize();
 	cuda_error_check;
 	return *this;
@@ -1523,9 +1480,8 @@ const gVector<Scalar>& gVector<Scalar>::operator/=(Scalar s) {
 template<typename Scalar>
 void gVector<Scalar>::invInPlace(void) {
 	Scalar* ptr = data();
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, _size, 512);
-	gv::map<<<grid_size, block_size>>>(ptr, size(), [=] __device__(int tid) { return 1 / ptr[tid]; });
+	auto cfg = make_kernel_param(_size, 512);
+	gv::map<<<cfg.grid, cfg.block>>>(ptr, size(), [=] __device__(int tid) { return 1 / ptr[tid]; });
 	cudaDeviceSynchronize();
 	cuda_error_check;
 	return;
@@ -1536,17 +1492,15 @@ void gVector<Scalar>::swap(gVector<Scalar>& v2) {
 	if (_size != v2.size()) {
 		throw std::string("size does not match !");
 	}
-	auto ptr = _data;
-	_data = v2._data;
-	v2._data = ptr;
+	std::swap(_data, v2._data);
+	std::swap(_owns, v2._owns);
 }
 
 template<typename Scalar>
 const gVector<Scalar>& gVector<Scalar>::operator*=(Scalar s) {
 	Scalar* ptr = data();
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, _size, 512);
-	gv::map<<<grid_size, block_size>>>(data(), size(), [=] __device__(int tid) { return ptr[tid] * s; });
+	auto cfg = make_kernel_param(_size, 512);
+	gv::map<<<cfg.grid, cfg.block>>>(data(), size(), [=] __device__(int tid) { return ptr[tid] * s; });
 	cudaDeviceSynchronize();
 	cuda_error_check;
 	return *this;
@@ -1561,9 +1515,8 @@ template<typename Scalar>
 void gVector<Scalar>::set(int* filter, Scalar val) {
 	int len = size();
 	Scalar* ptr = data();
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, len, 512);
-	gv::map<<<grid_size, block_size>>>(size(), [=] __device__(int tid) {
+	auto cfg = make_kernel_param(len, 512);
+	gv::map<<<cfg.grid, cfg.block>>>(size(), [=] __device__(int tid) {
 		if (read_bit(filter, tid)) {
 			ptr[tid] = val;
 		}
@@ -1582,9 +1535,8 @@ void gVector<Scalar>::get(Scalar* host_ptr, size_t len, size_t offset /*= 0*/) c
 template<typename Scalar>
 void gVector<Scalar>::maximize(Scalar s) {
 	Scalar* ptr = data();
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, _size, 512);
-	gv::map<<<grid_size, block_size>>>(ptr, size(), [=] __device__(int tid) {
+	auto cfg = make_kernel_param(_size, 512);
+	gv::map<<<cfg.grid, cfg.block>>>(ptr, size(), [=] __device__(int tid) {
 		Scalar v = ptr[tid];
 		return v > s ? v : s;
 	});
@@ -1596,9 +1548,8 @@ template<typename Scalar>
 void gVector<Scalar>::maximize(const gVector<Scalar>& v2) {
 	Scalar* v1data = data();
 	const Scalar* v2data = v2.data();
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, _size, 512);
-	gv::map<<<grid_size, block_size>>>(v1data, size(), [=] __device__(int tid) {
+	auto cfg = make_kernel_param(_size, 512);
+	gv::map<<<cfg.grid, cfg.block>>>(v1data, size(), [=] __device__(int tid) {
 		Scalar val1 = v1data[tid];
 		Scalar val2 = v2data[tid];
 		return val1 > val2 ? val1 : val2;
@@ -1610,9 +1561,8 @@ void gVector<Scalar>::maximize(const gVector<Scalar>& v2) {
 template<typename Scalar>
 void gVector<Scalar>::minimize(Scalar s) {
 	Scalar* ptr = data();
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, _size, 512);
-	gv::map<<<grid_size, block_size>>>(ptr, size(), [=] __device__(int tid) {
+	auto cfg = make_kernel_param(_size, 512);
+	gv::map<<<cfg.grid, cfg.block>>>(ptr, size(), [=] __device__(int tid) {
 		Scalar v = ptr[tid];
 		return v < s ? v : s;
 	});
@@ -1624,9 +1574,8 @@ template<typename Scalar>
 void gVector<Scalar>::minimize(const gVector<Scalar>& v2) {
 	Scalar* v1data = data();
 	const Scalar* v2data = v2.data();
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, _size, 512);
-	gv::map<<<grid_size, block_size>>>(v1data, size(), [=] __device__(int tid) {
+	auto cfg = make_kernel_param(_size, 512);
+	gv::map<<<cfg.grid, cfg.block>>>(v1data, size(), [=] __device__(int tid) {
 		Scalar val1 = v1data[tid];
 		Scalar val2 = v2data[tid];
 		return val1 < val2 ? val1 : val2;
@@ -1728,9 +1677,8 @@ void gVector<Scalar>::pitchSumInPlace(int batch_size, int nword, int wordpitch, 
 				  << "[gv] :" << __LINE__ << "not pitched size" << std::endl;
 	}
 	if (sumcol) {
-		size_t grid_size, block_size = BlockSize;
-		make_kernel_param(&grid_size, &block_size, nword, BlockSize);
-		pitchSumColumnInPlace_kernel<<<grid_size, block_size>>>(nrows, _data, nword, wordpitch);
+		auto cfg = make_kernel_param(nword, BlockSize);
+		pitchSumColumnInPlace_kernel<<<cfg.grid, cfg.block>>>(nrows, _data, nword, wordpitch);
 		cudaDeviceSynchronize();
 		cuda_error_check;
 	} else {
@@ -1804,9 +1752,8 @@ void gVector<Scalar>::weightedPitchSumInPlace(int batch_size, int nword, int wor
 	constexpr int BlockSize = 512;
 	int nrows = _size / wordpitch;
 	if (sumcol) {
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, nword, BlockSize);
-		weightPitchSumColumnInPlace_kernel<<<grid_size, block_size>>>(nrows, _data, nword, wordpitch, weight);
+		auto cfg = make_kernel_param(nword, BlockSize);
+		weightPitchSumColumnInPlace_kernel<<<cfg.grid, cfg.block>>>(nrows, _data, nword, wordpitch, weight);
 		cudaDeviceSynchronize();
 		cuda_error_check;
 	} else {
@@ -1845,9 +1792,8 @@ void gVector<Scalar>::clamp(Scalar lower, Scalar upper) {
 			return upper;
 		return val;
 	};
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, _size, 512);
-	gv::map<<<grid_size, block_size>>>(ptr, size(), clamp_kernel);
+	auto cfg = make_kernel_param(_size, 512);
+	gv::map<<<cfg.grid, cfg.block>>>(ptr, size(), clamp_kernel);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 }
@@ -1855,9 +1801,8 @@ void gVector<Scalar>::clamp(Scalar lower, Scalar upper) {
 template<typename Scalar>
 void gVector<Scalar>::clamp(Scalar* lower, Scalar* upper) {
 	Scalar* ptr = data();
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, _size, 512);
-	gv::map<<<grid_size, block_size>>>(ptr, size(), [=] __device__(int eid) {
+	auto cfg = make_kernel_param(_size, 512);
+	gv::map<<<cfg.grid, cfg.block>>>(ptr, size(), [=] __device__(int eid) {
 		Scalar val = ptr[eid];
 		Scalar low = lower[eid], up = upper[eid];
 		if (low > val)
@@ -1908,9 +1853,8 @@ template<typename Scalar>
 Scalar gVector<Scalar>::min_positive(void) const {
 	gVector tmp(size());
 	Scalar* src = _data;
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, size(), 512);
-	gv::map<<<grid_size, block_size>>>(tmp.data(), size(), [=] __device__(int eid) {
+	auto cfg = make_kernel_param(size(), 512);
+	gv::map<<<cfg.grid, cfg.block>>>(tmp.data(), size(), [=] __device__(int eid) {
 		Scalar val = src[eid];
 		if (val < 0) {
 			val = 1e30;
@@ -1925,10 +1869,9 @@ Scalar gVector<Scalar>::min_positive(void) const {
 
 template<typename Scalar>
 void gVector<Scalar>::Sqrt(void) {
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, size(), 512);
+	auto cfg = make_kernel_param(size(), 512);
 	Scalar* src = _data;
-	gv::map<<<grid_size, block_size>>>(_data, size(), [=] __device__(int tid) {
+	gv::map<<<cfg.grid, cfg.block>>>(_data, size(), [=] __device__(int tid) {
 		return sqrt(src[tid]);
 	});
 	cudaDeviceSynchronize();
@@ -1995,13 +1938,12 @@ struct exp_t
 	void launch(Scalar* dst, int n) const {
 		const subExp_t* p_graph = static_cast<const subExp_t*>(this);
 		subExp_t graph = *p_graph;
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, n, 512);
+		auto cfg = make_kernel_param(n, 512);
 		//std::cout << "launcing with size " << n << std::endl;
 		//std::cout << "result at " << dst << std::endl;
 		cuda_error_check;
 		//std::cout << typeid(graph).name() << std::endl;
-		compute_graph_kernel<<<grid_size, block_size>>>(dst, n, graph);
+		compute_graph_kernel<<<cfg.grid, cfg.block>>>(dst, n, graph);
 		cudaDeviceSynchronize();
 		cuda_error_check;
 	}
@@ -2063,11 +2005,10 @@ struct exp_t
 		opExp_t graph2 = op2;
 		//printf("pbuf = %p\n", pbuf);
 		int n = op2.size();
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, n, 512);
+		auto cfg = make_kernel_param(n, 512);
 		cuda_error_check;
-		Scalar* pbuf = gVector<Scalar>::get_dump_buf(sizeof(Scalar) * grid_size);
-		dot_graph_kernel<<<grid_size, block_size>>>(pbuf, n, graph1, graph2);
+		Scalar* pbuf = gVector<Scalar>::get_dump_buf(sizeof(Scalar) * cfg.grid);
+		dot_graph_kernel<<<cfg.grid, cfg.block>>>(pbuf, n, graph1, graph2);
 		cudaDeviceSynchronize();
 		cuda_error_check;
 		n = (n + 511) / 512;
@@ -2078,11 +2019,10 @@ struct exp_t
 		const subExp_t* p_ex = static_cast<const subExp_t*>(this);
 		subExp_t graph = *p_ex;
 		int n = graph.size();
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, n, 512);
+		auto cfg = make_kernel_param(n, 512);
 		cuda_error_check;
-		Scalar* pbuf = gVector<Scalar>::get_dump_buf(sizeof(Scalar) * grid_size);
-		sum_graph_kernel<<<grid_size, block_size>>>(pbuf, n, graph);
+		Scalar* pbuf = gVector<Scalar>::get_dump_buf(sizeof(Scalar) * cfg.grid);
+		sum_graph_kernel<<<cfg.grid, cfg.block>>>(pbuf, n, graph);
 		cudaDeviceSynchronize();
 		cuda_error_check;
 		n = (n + 511) / 512;
@@ -2093,11 +2033,10 @@ struct exp_t
 		const subExp_t* p_ex = static_cast<const subExp_t*>(this);
 		subExp_t graph = *p_ex;
 		int n = graph.size();
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, n, 512);
+		auto cfg = make_kernel_param(n, 512);
 		cuda_error_check;
-		Scalar* pbuf = gVector<Scalar>::get_dump_buf(sizeof(Scalar) * grid_size);
-		sqrnorm_graph_kernel<<<grid_size, block_size>>>(pbuf, n, graph);
+		Scalar* pbuf = gVector<Scalar>::get_dump_buf(sizeof(Scalar) * cfg.grid);
+		sqrnorm_graph_kernel<<<cfg.grid, cfg.block>>>(pbuf, n, graph);
 		cudaDeviceSynchronize();
 		cuda_error_check;
 		n = (n + 511) / 512;
@@ -2108,11 +2047,10 @@ struct exp_t
 		const subExp_t* p_ex = static_cast<const subExp_t*>(this);
 		subExp_t graph = *p_ex;
 		int n = graph.size();
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, n, 512);
+		auto cfg = make_kernel_param(n, 512);
 		cuda_error_check;
-		Scalar* pbuf = gVector<Scalar>::get_dump_buf(sizeof(Scalar) * grid_size);
-		max_graph_kernel<<<grid_size, block_size>>>(pbuf, n, graph);
+		Scalar* pbuf = gVector<Scalar>::get_dump_buf(sizeof(Scalar) * cfg.grid);
+		max_graph_kernel<<<cfg.grid, cfg.block>>>(pbuf, n, graph);
 		cudaDeviceSynchronize();
 		cuda_error_check;
 		n = (n + 511) / 512;
@@ -2123,11 +2061,10 @@ struct exp_t
 		const subExp_t* p_ex = static_cast<const subExp_t*>(this);
 		subExp_t graph = *p_ex;
 		int n = graph.size();
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, n, 512);
+		auto cfg = make_kernel_param(n, 512);
 		cuda_error_check;
-		Scalar* pbuf = gVector<Scalar>::get_dump_buf(sizeof(Scalar) * grid_size);
-		min_graph_kernel<<<grid_size, block_size>>>(pbuf, n, graph);
+		Scalar* pbuf = gVector<Scalar>::get_dump_buf(sizeof(Scalar) * cfg.grid);
+		min_graph_kernel<<<cfg.grid, cfg.block>>>(pbuf, n, graph);
 		cudaDeviceSynchronize();
 		cuda_error_check;
 		n = (n + 511) / 512;
@@ -2174,26 +2111,6 @@ struct exp_t
 
 	slice_exp_t<Scalar, subExp_t> slice(int start, int end) const {
 		return slice_exp_t<Scalar, subExp_t>(*static_cast<const subExp_t*>(this), start, end);
-	}
-
-	void toMatlab(const char* name) const {
-#if defined(GVECTOR_WITH_MATLAB)
-		const subExp_t* p_ex = static_cast<const subExp_t*>(this);
-		subExp_t graph = *p_ex;
-		gVector<Scalar> vec = graph;
-		vec.toMatlab(name);
-#endif
-	}
-
-	template<typename std::enable_if<
-				 std::is_same<Scalar, double>::value ||
-					 std::is_same<Scalar, float>::value ||
-					 std::is_same<Scalar, int>::value ||
-					 std::is_same<Scalar, bool>::value,
-				 int>::type = 0>
-	void toMatlab(const char* name, int rows, int cols, int wordpicth, bool rowmajor) const {
-		gVector<Scalar> vec = *static_cast<const subExp_t*>(this);
-		vec.toMatlab(name, rows, cols, wordpicth, rowmajor);
 	}
 };
 

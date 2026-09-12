@@ -246,8 +246,6 @@ struct Grid {
 
 	bool solveHostEquation(void);
 
-	void testCoarsestModes(void);
-
 	void assembleHostMatrix(void);
 
 	void gs_relaxation(float w_SOR = 1.f, int times_ = 1);
@@ -335,8 +333,6 @@ struct Grid {
 
 	void readDisplacement(const std::string& fname);
 
-	void restrictMatrix2matlab(std::string rname, Grid& coarseGrid);
-
 	std::string checkDeviceError(void);
 
 	void enforceCellSymmetry(half* celldata, SymmetryType sym, bool average);
@@ -364,23 +360,14 @@ struct Grid {
 	void v3_download(VT* hst[3], VT* dev[3]);
 	void v3_removeT(VT* u[3], VT tHost[3]);
 	void v3_linear(VT a1, VT* v1[3], VT a2, VT* v2[3], VT* v[3], int len = -1);
-	void v3_toMatlab(const std::string& mname, double* v[3], int len = -1);
-	void v3_toMatlab(const std::string& mname, VT* v[3], int len = -1, bool removePeriodDof = false);
 	void v3_write(const std::string& filename, VT* v[3], int len = -1);
 	void v3_write(const std::string& filename, VT* v[3], bool removePeriodDof = false);
 	void v3_read(const std::string& filename, VT* v[3]);
-	void v3_wave(VT* u[3], const std::array<VT, 3>& radi);
-	void v3_create(VT* v[3], int len = -1);
-	void v3_destroy(VT* v[3]);
 	float v3_dot(VT* v[3], VT* u[3], bool removePeriodDof = false, int len = -1);
 	Eigen::Matrix<float, -1, 1> v3_toMatrix(VT* u[3], bool removePeriodDof = false);
 	void v3_fromMatrix(VT* u[3], const Eigen::Matrix<float, -1, 1>& b, bool hasPeriodDof = false);
 	void v3_stencilOnLeft(VT* v[3], VT* Kv[3]);
 	void v3_average(VT* v[3], VT vMean[3], bool removePeriodDof = false);
-
-	void array2matlab(const std::string& matname, int* hostdata, int len);
-	void array2matlab(const std::string& matname, double* hostdata, int len);
-	void array2matlab(const std::string& matname, float* hostdata, int len);
 
 	double relative_residual(void);
 	double residual(void);
@@ -390,9 +377,6 @@ struct Grid {
 	// map lexid to gsid
 	std::vector<int> getVertexLexidMap(void);
 	std::vector<int> getCellLexidMap(void);
-
-	void stencil2matlab(const std::string& name, bool removePeriodDof = true);
-	void lexistencil2matlab(const std::string& name);
 
 	Eigen::SparseMatrix<double> stencil2matrix(bool removePeriodDof = true);
 
@@ -429,15 +413,16 @@ struct Grid {
 	void enforce_period_element(float* data);
 	void enforce_period_element(half* data);
 
-	void test(void);
-	void testIndexer(void);
-	void testVflags(void);
-	void test_gs_relaxation(void);
-	//void testgsid2pos(void);
+	~Grid(void);
+
   private:
 	// return nv, ne
 	std::pair<int, int> countGS(void);
 	size_t allocateBuffer(int nv, int ne);
+	void registerOwned(const std::string& name) {
+		ownedBuffers_.push_back(name);
+	}
+	std::vector<std::string> ownedBuffers_;
 };
 
 extern std::string getPath(const std::string& str);
