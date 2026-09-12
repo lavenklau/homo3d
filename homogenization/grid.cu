@@ -322,16 +322,15 @@ void homo::Grid::setFlags_g(void) {
 		eGsend[i] = gsCellSetEnd[i];
 		eGsvalid[i] = gsCellSetValid[i];
 	}
-	size_t grid_size, block_size;
 	// set vertex flags
-	make_kernel_param(&grid_size, &block_size, n_gsvertices(), 512);
-	setVertexFlags_kernel<<<grid_size, block_size>>>(n_gsvertices(), vflag, ereso, vGsend, vGsvalid);
+	auto cfg = make_kernel_param(n_gsvertices(), 512);
+	setVertexFlags_kernel<<<cfg.grid, cfg.block>>>(n_gsvertices(), vflag, ereso, vGsend, vGsvalid);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 
 	// set cell flags
-	make_kernel_param(&grid_size, &block_size, n_gscells(), 512);
-	setCellFlags_kernel<<<grid_size, block_size>>>(n_gscells(), eflag, ereso, eGsend, eGsvalid);
+	cfg = make_kernel_param(n_gscells(), 512);
+	setCellFlags_kernel<<<cfg.grid, cfg.block>>>(n_gscells(), eflag, ereso, eGsend, eGsvalid);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 }
@@ -1226,22 +1225,21 @@ void homo::Grid::gs_relaxation(float w_SOR /*= 1.f*/, int times_ /*= 1*/) {
 	for (int itn = 0; itn < times_; itn++) {
 		for (int i = 0; i < 8; i++) {
 			int set_id = i;
-			size_t grid_size, block_size;
 			int n_gs = gsVertexEnd[set_id] - (set_id == 0 ? 0 : gsVertexEnd[set_id - 1]);
 			if (assemb_otf) {
 #if 1
-				make_kernel_param(&grid_size, &block_size, n_gs * 8, 32 * 8);
-				gs_relaxation_otf_kernel<<<grid_size, block_size>>>(set_id, rho_g, gridCellReso, vertflag, cellflag, w_SOR, diag_strength);
+				auto cfg = make_kernel_param(n_gs * 8, 32 * 8);
+				gs_relaxation_otf_kernel<<<cfg.grid, cfg.block>>>(set_id, rho_g, gridCellReso, vertflag, cellflag, w_SOR, diag_strength);
 #elif 1
-				make_kernel_param(&grid_size, &block_size, n_gs * 8, 32 * 8);
-				gs_relaxation_otf_kernel_opt<<<grid_size, block_size>>>(i, rho_g, gridCellReso, vertflag, cellflag, w_SOR);
+				auto cfg = make_kernel_param(n_gs * 8, 32 * 8);
+				gs_relaxation_otf_kernel_opt<<<cfg.grid, cfg.block>>>(i, rho_g, gridCellReso, vertflag, cellflag, w_SOR);
 #else
-				make_kernel_param(&grid_size, &block_size, n_gs * 16, 32 * 16);
-				gs_relaxation_otf_kernel_test_512<<<grid_size, block_size>>>(i, rho_g, gridCellReso, vertflag, cellflag, w_SOR, diag_strength);
+				auto cfg = make_kernel_param(n_gs * 16, 32 * 16);
+				gs_relaxation_otf_kernel_test_512<<<cfg.grid, cfg.block>>>(i, rho_g, gridCellReso, vertflag, cellflag, w_SOR, diag_strength);
 #endif
 			} else {
-				make_kernel_param(&grid_size, &block_size, n_gs * 13, 32 * 13);
-				gs_relaxation_kernel<<<grid_size, block_size>>>(set_id, vertflag, w_SOR);
+				auto cfg = make_kernel_param(n_gs * 13, 32 * 13);
+				gs_relaxation_kernel<<<cfg.grid, cfg.block>>>(set_id, vertflag, w_SOR);
 			}
 			cudaDeviceSynchronize();
 			cuda_error_check;
@@ -1264,9 +1262,8 @@ void homo::Grid::prolongate_correction(void) {
 		gsCoarseVertexEnd[i] = Coarse->gsVertexSetEnd[i];
 	}
 	int nv_fine = n_gsvertices();
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, nv_fine, 256);
-	prolongate_correction_kernel_1<<<grid_size, block_size>>>(is_root, nv_fine, vflags, vcoarseFlags, gsVertexEnd, gsCoarseVertexEnd);
+	auto cfg = make_kernel_param(nv_fine, 256);
+	prolongate_correction_kernel_1<<<cfg.grid, cfg.block>>>(is_root, nv_fine, vflags, vcoarseFlags, gsVertexEnd, gsCoarseVertexEnd);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 	enforce_period_boundary(u_g);
@@ -1282,9 +1279,8 @@ void homo::Grid::restrict_residual(void) {
 		gsFineVertexEnd[i] = fine->gsVertexSetEnd[i];
 	}
 	int nv = n_gsvertices();
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, nv, 256);
-	restrict_residual_kernel_1<<<grid_size, block_size>>>(nv, vflags, vfineflags, gsVertexEnd, gsFineVertexEnd);
+	auto cfg = make_kernel_param(nv, 256);
+	restrict_residual_kernel_1<<<cfg.grid, cfg.block>>>(nv, vflags, vfineflags, gsVertexEnd, gsFineVertexEnd);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 	pad_vertex_data(f_g);
@@ -1588,22 +1584,20 @@ void homo::Grid::update_residual(void) {
 	VertexFlags* vflags = vertflag;
 	CellFlags* eflags = cellflag;
 	if (assemb_otf) {
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, n_gsvertices() * 8, 32 * 8);
+		auto cfg = make_kernel_param(n_gsvertices() * 8, 32 * 8);
 #if 1
-		update_residual_otf_kernel_1<<<grid_size, block_size>>>(n_gsvertices(), rho_g, gridCellReso,
-																vflags, eflags, diag_strength);
+		update_residual_otf_kernel_1<<<cfg.grid, cfg.block>>>(n_gsvertices(), rho_g, gridCellReso,
+															  vflags, eflags, diag_strength);
 #else
-		update_residual_otf_kernel_opt<<<grid_size, block_size>>>(n_gsvertices(), rho_g, gridCellReso,
-																  vflags, eflags, diag_strength);
+		update_residual_otf_kernel_opt<<<cfg.grid, cfg.block>>>(n_gsvertices(), rho_g, gridCellReso,
+																vflags, eflags, diag_strength);
 #endif
 		cudaDeviceSynchronize();
 		cuda_error_check;
 	} else {
-		size_t grid_size, block_size;
 		int nv = n_gsvertices();
-		make_kernel_param(&grid_size, &block_size, n_gsvertices() * 9, 32 * 9);
-		update_residual_kernel_1<<<grid_size, block_size>>>(nv, vflags);
+		auto cfg = make_kernel_param(n_gsvertices() * 9, 32 * 9);
+		update_residual_kernel_1<<<cfg.grid, cfg.block>>>(nv, vflags);
 		cudaDeviceSynchronize();
 		cuda_error_check;
 	}
@@ -1705,9 +1699,9 @@ __device__ int gsPos2Id(int pos[3], int* gsEnd, int (*gsReso)[8]) {
 //		(cellReso[0] + 1) * (cellReso[1] + 1) * 2 +
 //		(cellReso[1] + 1) * (cellReso[2] + 1) * 2+
 //		(cellReso[0] + 1) * (cellReso[2] + 1) * 2;
-//	make_kernel_param(&grid_size, &block_size, n_vboundary, 256);
+//	auto cfg = make_kernel_param(n_vboundary, 256);
 //	devArray_t<double*, 3> vdata{ v[0],v[1],v[2] };
-//	padding_period_vertex_data_kernel << <grid_size, block_size >> > (vdata);
+//	padding_period_vertex_data_kernel <<<cfg.grid, cfg.block>>> (vdata);
 //	cudaDeviceSynchronize();
 //	cuda_error_check;
 //}
@@ -1791,8 +1785,8 @@ __device__ int gsPos2Id(int pos[3], int* gsEnd, int (*gsReso)[8]) {
 //		cellReso[0] * cellReso[1] * 2 +
 //		cellReso[1] * cellReso[2] * 2 +
 //		cellReso[0] * cellReso[2] * 2;
-//	make_kernel_param(&grid_size, &block_size, n_eboundary, 256);
-//	padding_period_cell_data_kernel << <grid_size, block_size >> > (rho);
+//	auto cfg = make_kernel_param(n_eboundary, 256);
+//	padding_period_cell_data_kernel <<<cfg.grid, cfg.block>>> (rho);
 //	cudaDeviceSynchronize();
 //	cuda_error_check;
 //
@@ -1954,33 +1948,11 @@ void homo::Grid::enforce_unit_macro_strain(int istrain) {
 	cuda_error_check;
 	VertexFlags* vflags = vertflag;
 	CellFlags* eflags = cellflag;
-	size_t grid_size, block_size;
 	devArray_t<VT*, 3> fcharlist{f_g[0], f_g[1], f_g[2]};
-	make_kernel_param(&grid_size, &block_size, n_gsvertices(), 256);
-	enforce_unit_macro_strain_kernel<<<grid_size, block_size>>>(n_gsvertices(), istrain, fcharlist, vflags, eflags, rho_g);
+	auto cfg = make_kernel_param(n_gsvertices(), 256);
+	enforce_unit_macro_strain_kernel<<<cfg.grid, cfg.block>>>(n_gsvertices(), istrain, fcharlist, vflags, eflags, rho_g);
 	cudaDeviceSynchronize();
 	cuda_error_check;
-
-	//for (int i = 0; i < 6; i++) {
-	//	enforce_period_boundary(fchar_g[i], true);
-	//}
-
-	// debug
-	if (0) {
-		std::vector<float> fh[3];
-		for (int i = 0; i < 3; i++) {
-			fh[i].resize(n_gsvertices());
-		}
-		/*for (int i = 0; i < 6; i++)*/ {
-			for (int j = 0; j < 3; j++) {
-				cudaMemcpy(fh[j].data(), fcharlist[j], sizeof(float) * n_gsvertices(), cudaMemcpyDeviceToHost);
-			}
-			char buf[100];
-			sprintf_s(buf, "fchar%d", istrain);
-			v3_toMatlab(buf, fcharlist.data());
-			//homoutils::writeVectors(getPath(buf), fh);
-		}
-	}
 }
 
 float Grid::v3_norm(VT* v[3], bool removePeriodDof /*= false*/, int len /*= -1*/) {
@@ -2067,13 +2039,12 @@ float homo::Grid::v3_diffnorm(VT* v[3], VT* u[3], int len /*= -1*/) {
 	ulist[0] = u[0];
 	ulist[1] = u[1];
 	ulist[2] = u[2];
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, len, 256);
-	v3_diffnorm_kernel<<<grid_size, block_size>>>(vlist, ulist, buf, len);
+	auto cfg = make_kernel_param(len, 256);
+	v3_diffnorm_kernel<<<cfg.grid, cfg.block>>>(vlist, ulist, buf, len);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 
-	double s = dump_array_sum(buf, grid_size);
+	double s = dump_array_sum(buf, cfg.grid);
 
 	return sqrt(s);
 }
@@ -2094,24 +2065,6 @@ void Grid::v3_copy(VT* dst[3], VT* src[3], int len /*= -1*/) {
 		cudaMemcpy(dst[i], src[i], sizeof(VT) * len, cudaMemcpyDeviceToDevice);
 	}
 	cuda_error_check;
-}
-
-void homo::Grid::v3_create(VT* v[3], int len /*= -1*/) {
-	if (len == -1)
-		len = n_gsvertices();
-	for (int i = 0; i < 3; i++) {
-		cudaMalloc(&v[i], len * sizeof(VT));
-	}
-	cuda_error_check;
-}
-
-void homo::Grid::v3_destroy(VT* v[3]) {
-	for (int i = 0; i < 3; i++) {
-		auto err = cudaFree(v[i]);
-		if (err != cudaSuccess) {
-			printf("\033[31mDestroy vector failed, error = %d\033[0m\n", err);
-		}
-	}
 }
 
 template<typename Vec, typename T>
@@ -2181,14 +2134,13 @@ __global__ void compliance_kernel(
 
 double Grid::compliance(VT* ug[3], VT* vg[3]) {
 	useGrid_g();
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, n_gsvertices(), 256);
+	auto cfg = make_kernel_param(n_gsvertices(), 256);
 	auto Cebuffer = getTempPool().getBuffer(n_gscells() * sizeof(float));
 	float* Ce = Cebuffer.template data<float>();
 	init_array(Ce, 0.f, n_gscells());
 	devArray_t<VT*, 3> u{ug[0], ug[1], ug[2]};
 	devArray_t<VT*, 3> v{vg[0], vg[1], vg[2]};
-	compliance_kernel<<<grid_size, block_size>>>(n_gsvertices(), u, v, rho_g, Ce, cellflag, vertflag);
+	compliance_kernel<<<cfg.grid, cfg.block>>>(n_gsvertices(), u, v, rho_g, Ce, cellflag, vertflag);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 
@@ -2205,8 +2157,7 @@ double Grid::compliance(VT* ug[3], VT* vg[3]) {
 void homo::Grid::v3_linear(VT a1, VT* v1g[3], VT a2, VT* v2g[3], VT* vg[3], int len /* =-1 */) {
 	if (len == -1)
 		len = n_gsvertices();
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, len, 512);
+	auto cfg = make_kernel_param(len, 512);
 
 	devArray_t<VT*, 3> v1{v1g[0], v1g[1], v1g[2]};
 	devArray_t<VT*, 3> v2{v2g[0], v2g[1], v2g[2]};
@@ -2218,7 +2169,7 @@ void homo::Grid::v3_linear(VT a1, VT* v1g[3], VT a2, VT* v2g[3], VT* vg[3], int 
 		v[2][tid] = a1 * v1[2][tid] + a2 * v2[2][tid];
 	};
 
-	map<<<grid_size, block_size>>>(len, ker);
+	map<<<cfg.grid, cfg.block>>>(len, ker);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 }
@@ -2289,11 +2240,10 @@ __global__ void set_macro_strain_displacement_kernel(
 }
 
 void homo::Grid::setMacroStrainDisplacement(int i, VT* u[3]) {
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, n_gsvertices(), 256);
+	auto cfg = make_kernel_param(n_gsvertices(), 256);
 	devArray_t<VT*, 3> ug{u[0], u[1], u[2]};
 	VertexFlags* vflags = vertflag;
-	set_macro_strain_displacement_kernel<<<grid_size, block_size>>>(n_gsvertices(), i, vflags, ug);
+	set_macro_strain_displacement_kernel<<<cfg.grid, cfg.block>>>(n_gsvertices(), i, vflags, ug);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 }
@@ -2393,8 +2343,7 @@ void homo::Grid::sensitivity(int i, int j, float* sens) {
 	NO_SUPPORT_ERROR;
 #if 0
 
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, n_gsvertices(), 256);
+	auto cfg = make_kernel_param(n_gsvertices(), 256);
 	init_array(sens, 0.f, n_gscells());
 	devArray_t<float*, 3> u{ u_g[0], u_g[1], u_g[2] };
 	devArray_t<float*, 3> v{ uchar_g[0], uchar_g[1], uchar_g[2] };
@@ -2403,7 +2352,7 @@ void homo::Grid::sensitivity(int i, int j, float* sens) {
 	float volume = n_cells();
 	//constVec<float> rholist(1);
 	auto* rholist = rho_g;
-	sensitivity_kernel << <grid_size, block_size >> > (n_gsvertices(), i, j, u, v,
+	sensitivity_kernel <<<cfg.grid, cfg.block>>> (n_gsvertices(), i, j, u, v,
 		rholist, vertflag, cellflag,
 		sens, volume);
 	cudaDeviceSynchronize();
@@ -2412,8 +2361,8 @@ void homo::Grid::sensitivity(int i, int j, float* sens) {
 	// scale sens with cell volume
 	//auto ne = n_gscells();
 	//float vol = cellReso[0] * cellReso[1] * cellReso[2];
-	//make_kernel_param(&grid_size, &block_size, ne, 256);
-	//map << <grid_size, block_size >> > (ne, [=]__device__(int tid) {
+	//auto cfg = make_kernel_param(ne, 256);
+	//map <<<cfg.grid, cfg.block>>> (ne, [=]__device__(int tid) {
 	//	sens[tid] /= vol;
 	//});
 	//cudaDeviceSynchronize();
@@ -2433,7 +2382,6 @@ void homo::Grid::restrict_stencil(void) {
 	if (fine->assemb_otf) {
 		// fine->useGrid_g();
 		useGrid_g();
-		size_t grid_size, block_size;
 		for (int i = 0; i < 27; i++) {
 			// for (int j = 0; j < 9; j++) {
 			// cudaMemset(stencil_g[i][j], 0, sizeof(float) * n_gsvertices());
@@ -2442,11 +2390,11 @@ void homo::Grid::restrict_stencil(void) {
 		}
 		cudaDeviceSynchronize();
 		cuda_error_check;
-		// make_kernel_param(&grid_size, &block_size, fine->n_gscells(), 256);
-		// restrict_stencil_otf_kernel_1 << <grid_size, block_size >> > (fine->n_gscells(), fine->rho_g, fine->cellflag, fine->vertflag, fine->diag_strength);
+		// auto cfg = make_kernel_param(fine->n_gscells(), 256);
+		// restrict_stencil_otf_kernel_1 <<<cfg.grid, cfg.block>>> (fine->n_gscells(), fine->rho_g, fine->cellflag, fine->vertflag, fine->diag_strength);
 		int nv = (cellReso[0] + 1) * (cellReso[1] + 1) * (cellReso[2] + 1);
-		make_kernel_param(&grid_size, &block_size, nv, 256);
-		restrict_stencil_otf_aos_kernel_1<<<grid_size, block_size>>>(nv, fine->rho_g, fine->cellflag, fine->vertflag);
+		auto cfg = make_kernel_param(nv, 256);
+		restrict_stencil_otf_aos_kernel_1<<<cfg.grid, cfg.block>>>(nv, fine->rho_g, fine->cellflag, fine->vertflag);
 		cudaDeviceSynchronize();
 		cuda_error_check;
 
@@ -2473,10 +2421,9 @@ void homo::Grid::restrict_stencil(void) {
 		cuda_error_check;
 		int nvfine = fine->n_gsvertices();
 		//printf("--\n");
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, n_gsvertices(), 256);
-		//restrict_stencil_kernel_1 << <grid_size, block_size >> > (n_gsvertices(), nvfine, vertflag, fine->vertflag);
-		restrict_stencil_aos_kernel_1<<<grid_size, block_size>>>(n_gsvertices(), nvfine, vertflag, fine->vertflag);
+		auto cfg = make_kernel_param(n_gsvertices(), 256);
+		//restrict_stencil_kernel_1 <<<cfg.grid, cfg.block>>> (n_gsvertices(), nvfine, vertflag, fine->vertflag);
+		restrict_stencil_aos_kernel_1<<<cfg.grid, cfg.block>>>(n_gsvertices(), nvfine, vertflag, fine->vertflag);
 		cudaDeviceSynchronize();
 		cuda_error_check;
 		//stencil2matlab("Khost");
@@ -2485,8 +2432,7 @@ void homo::Grid::restrict_stencil(void) {
 }
 
 void homo::Grid::reset_density(float rho) {
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, n_gscells(), 512);
+	auto cfg = make_kernel_param(n_gscells(), 512);
 	init_array(rho_g, RhoT(rho), n_gscells());
 }
 
@@ -2582,9 +2528,8 @@ void lexi2gsorder_imp(T* src, T* dst, Grid::LexiType type_,
 		int nv = reso[0] * reso[1] * reso[2];
 		for (int k = 0; k < 8; k++)
 			gsend[k] = gsVertexSetEnd[k];
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, nv, 256);
-		lexi2gsorder_kernel<<<grid_size, block_size>>>(src, dst, reso, gsend, lexipadded);
+		auto cfg = make_kernel_param(nv, 256);
+		lexi2gsorder_kernel<<<cfg.grid, cfg.block>>>(src, dst, reso, gsend, lexipadded);
 		cudaDeviceSynchronize();
 		cuda_error_check;
 	} else if (type_ == Grid::CELL) {
@@ -2593,9 +2538,8 @@ void lexi2gsorder_imp(T* src, T* dst, Grid::LexiType type_,
 		int ne = reso[0] * reso[1] * reso[2];
 		for (int k = 0; k < 8; k++)
 			gsend[k] = gsCellSetEnd[k];
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, ne, 256);
-		lexi2gsorder_kernel<<<grid_size, block_size>>>(src, dst, reso, gsend, lexipadded);
+		auto cfg = make_kernel_param(ne, 256);
+		lexi2gsorder_kernel<<<cfg.grid, cfg.block>>>(src, dst, reso, gsend, lexipadded);
 		cudaDeviceSynchronize();
 		cuda_error_check;
 	}
@@ -2773,9 +2717,8 @@ void pad_vertex_data_imp(T** v, std::array<int, 3> cellReso, VertexFlags* vertfl
 	int nvpadedge = 2 * ((cellReso[0] + 3) * (cellReso[1] + 3) - (cellReso[0] + 1) * (cellReso[1] + 1)) +
 					4 * (cellReso[2] + 1);
 	devArray_t<T*, N> arr(v);
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, nvpadface + nvpadedge, 256);
-	pad_vertex_data_kernel<<<grid_size, block_size>>>(nvpadface, nvpadedge, arr, vertflag);
+	auto cfg = make_kernel_param(nvpadface + nvpadedge, 256);
+	pad_vertex_data_kernel<<<cfg.grid, cfg.block>>>(nvpadface, nvpadedge, arr, vertflag);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 }
@@ -2783,17 +2726,16 @@ void pad_vertex_data_imp(T** v, std::array<int, 3> cellReso, VertexFlags* vertfl
 void homo::Grid::enforce_period_stencil(bool additive) {
 	useGrid_g();
 #if 0
-	size_t grid_size, block_size;
 	int vreso[3] = { cellReso[0] + 1,cellReso[1] + 1,cellReso[2] + 1 };
 	int n_faces = (vreso[0] * vreso[1] + vreso[1] * vreso[2] + vreso[0] * vreso[2]);
 	int n = n_faces * 27;
-	make_kernel_param(&grid_size, &block_size, n, 256);
-	enforce_period_stencil_stage_kernel <<< grid_size, block_size >>> ();
+	auto cfg = make_kernel_param(n, 256);
+	enforce_period_stencil_stage_kernel <<<cfg.grid, cfg.block>>> ();
 	cudaDeviceSynchronize();
 	cuda_error_check;
 
-	make_kernel_param(&grid_size, &block_size, n_faces, 256);
-	enforce_period_stencil_subst_kernel <<< grid_size, block_size >>> ();
+	auto cfg = make_kernel_param(n_faces, 256);
+	enforce_period_stencil_subst_kernel <<<cfg.grid, cfg.block>>> ();
 	cudaDeviceSynchronize();
 	cuda_error_check;
 #else
@@ -2851,253 +2793,17 @@ __global__ void gsid2pos_kernel(int n, Flag* flags, devArray_t<int*, 3> pos, int
 	}
 }
 
-__global__ void testIndexerNeigh_kernel(int nv, int neigh, VertexFlags* vflags, devArray_t<int*, 3> pos) {
-	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
-	if (tid >= nv) {
-		return;
-	}
-	VertexFlags vflag = vflags[tid];
-	GridVertexIndex indexer(gGridCellReso[0], gGridCellReso[1], gGridCellReso[2]);
-	if (!vflag.is_fiction()) {
-		bool nofiction = indexer.locate(tid, vflag.get_gscolor(), gGsVertexEnd);
-		int neighid = -2;
-		int neicolor = -1;
-		if (nofiction) {
-			auto idc = indexer.neighVertex(neigh, gGsVertexEnd, gGsVertexReso);
-			neighid = idc.getId();
-			neicolor = idc.getColor();
-		}
-		if (neighid >= nv || neighid < -1) {
-			printf("error%d\n", __LINE__);
-		}
-		int p[3] = {-2, -2, -2};
-		if (neighid != -1) {
-			gsid2pos(neighid, neicolor, gGsVertexReso, gGsVertexEnd, p);
-		}
-		for (int i = 0; i < 3; i++) {
-			pos[i][tid] = p[i];
-		}
-	}
-}
-
-__global__ void testIndexerNeighElement_kernel(int nv, int ne, int neigh, VertexFlags* vflags, devArray_t<int*, 3> pos) {
-	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
-	if (tid >= nv) {
-		return;
-	}
-	VertexFlags vflag = vflags[tid];
-	GridVertexIndex indexer(gGridCellReso[0], gGridCellReso[1], gGridCellReso[2]);
-	if (!vflag.is_fiction()) {
-		bool nofiction = indexer.locate(tid, vflag.get_gscolor(), gGsVertexEnd);
-		int neighid = -2;
-		int neicolor = -1;
-		if (nofiction) {
-			auto idc = indexer.neighElement(neigh, gGsCellEnd, gGsCellReso);
-			neighid = idc.getId();
-			neicolor = idc.getColor();
-		}
-		if (neighid >= ne || neighid < -1) {
-			printf("error%d\n", __LINE__);
-		}
-		int p[3] = {-2, -2, -2};
-		if (neighid != -1) {
-			gsid2pos(neighid, neicolor, gGsCellReso, gGsCellEnd, p);
-		}
-		for (int i = 0; i < 3; i++) {
-			pos[i][tid] = p[i];
-		}
-	}
-}
-
-__global__ void testIndexerNeighCoarseVertex_kernel(int nv, int ne, int neigh, VertexFlags* vflags, devArray_t<int*, 3> pos) {
-	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
-	if (tid >= nv) {
-		return;
-	}
-	VertexFlags vflag = vflags[tid];
-	GridVertexIndex indexer(gGridCellReso[0], gGridCellReso[1], gGridCellReso[2]);
-	if (!vflag.is_fiction() && !vflag.is_period_padding()) {
-		bool nofiction = indexer.locate(tid, vflag.get_gscolor(), gGsVertexEnd);
-		int neighid = -2;
-		int neicolor = -1;
-		if (nofiction) {
-			int rem[3];
-			auto idc = indexer.neighCoarseVertex(neigh, gDownCoarse, gGsCoarseVertexEnd, gGsCoarseVertexReso, rem);
-			neighid = idc.getId();
-			neicolor = idc.getColor();
-			// DEBUG
-			//if (tid == 3554) {
-			//	printf("neigh = %d, id = %d, coarse = (%d, %d, %d), rem = (%d, %d, %d)\n",
-			//		neigh, neighid, gDownCoarse[0], gDownCoarse[1], gDownCoarse[2], rem[0], rem[1], rem[2]);
-			//}
-		}
-		if (neighid >= ne || neighid < -1) {
-			printf("error%d\n", __LINE__);
-		}
-		int p[3] = {-2, -2, -2};
-		if (neighid != -1) {
-			gsid2pos(neighid, neicolor, gGsCoarseVertexReso, gGsCoarseVertexEnd, p);
-			for (int i = 0; i < 3; i++)
-				p[i] *= gDownCoarse[i];
-		}
-		for (int i = 0; i < 3; i++) {
-			pos[i][tid] = p[i];
-		}
-		//if (neigh == 2 && p[0] == 0 && p[1] == 0 && p[2] == 0) {
-		//	printf("neigh_id = %d \n", neighid);
-		//}
-	} else {
-		for (int i = 0; i < 3; i++) {
-			pos[i][tid] = -2;
-		}
-	}
-}
-
-__global__ void testIndexerNeighFineVertex_kernel(int nv, int neigh, VertexFlags* vflags, devArray_t<int*, 3> pos) {
-	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
-	if (tid >= nv) {
-		return;
-	}
-	VertexFlags vflag = vflags[tid];
-	GridVertexIndex indexer(gGridCellReso[0], gGridCellReso[1], gGridCellReso[2]);
-	if (!vflag.is_fiction() && !vflag.is_period_padding()) {
-		bool nofiction = indexer.locate(tid, vflag.get_gscolor(), gGsVertexEnd);
-		int neighid = -2;
-		int neicolor = -1;
-		if (nofiction) {
-			int off[3] = {neigh % 3 - 1, neigh / 3 % 3 - 1, neigh / 9 - 1};
-			bool nondya = gUpCoarse[0] > 2 || gUpCoarse[1] > 2 || gUpCoarse[2] > 2;
-			auto idc = indexer.neighFineVertex(off, gUpCoarse, gGsFineVertexEnd, gGsFineVertexReso, nondya);
-			neighid = idc.getId();
-			neicolor = idc.getColor();
-		}
-		//if (neighid >= ne || neighid < -1) {
-		//	printf("error%d\n", __LINE__);
-		//}
-		int p[3] = {-2, -2, -2};
-		if (neighid != -1) {
-			gsid2pos(neighid, neicolor, gGsFineVertexReso, gGsFineVertexEnd, p);
-		}
-		for (int i = 0; i < 3; i++) {
-			pos[i][tid] = p[i];
-		}
-		//if (neigh == 2 && p[0] == 0 && p[1] == 0 && p[2] == 0) {
-		//	printf("neigh_id = %d \n", neighid);
-		//}
-	} else {
-		for (int i = 0; i < 3; i++) {
-			pos[i][tid] = -2;
-		}
-	}
-}
-
-void homo::Grid::testIndexer(void) {
-	useGrid_g();
-	devArray_t<int*, 3> pos;
-	for (int i = 0; i < 3; i++) {
-		pos[i] = getMem().getBuffer(getMem().addBuffer(sizeof(int) * n_gsvertices()))->data<int>();
-		init_array(pos[i], -2, n_gsvertices());
-	}
-	std::vector<int> hostpos[3];
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, n_gsvertices(), 256);
-	VertexFlags* vflags = vertflag;
-
-	// ...
-	Coarse->getGsVertexPos(hostpos);
-	homoutils::writeVectors(getPath("coarsegspos"), hostpos);
-
-	getGsVertexPos(hostpos);
-	homoutils::writeVectors(getPath("gspos"), hostpos);
-
-	// ...
-	if (0) {
-		for (int i = 0; i < 27; i++) {
-			cudaDeviceSynchronize();
-			cuda_error_check;
-			testIndexerNeigh_kernel<<<grid_size, block_size>>>(n_gsvertices(), i, vflags, pos);
-			cudaDeviceSynchronize();
-			cuda_error_check;
-			for (int k = 0; k < 3; k++) {
-				hostpos[k].resize(n_gsvertices());
-				cudaMemcpy(hostpos[k].data(), pos[k], sizeof(int) * n_gsvertices(), cudaMemcpyDeviceToHost);
-			}
-			char buf[100];
-			sprintf_s(buf, "./neigh%d", i);
-			homoutils::writeVectors(getPath(buf), hostpos);
-		}
-	}
-	if (0) {
-		for (int i = 0; i < 8; i++) {
-			cudaDeviceSynchronize();
-			cuda_error_check;
-			testIndexerNeighElement_kernel<<<grid_size, block_size>>>(n_gsvertices(), n_gscells(), i, vflags, pos);
-			cudaDeviceSynchronize();
-			cuda_error_check;
-			for (int k = 0; k < 3; k++) {
-				hostpos[k].resize(n_gsvertices());
-				cudaMemcpy(hostpos[k].data(), pos[k], sizeof(int) * n_gsvertices(), cudaMemcpyDeviceToHost);
-			}
-			char buf[100];
-			sprintf_s(buf, "./neigh%d", i);
-			homoutils::writeVectors(getPath(buf), hostpos);
-		}
-	}
-	if (1) {
-		for (int i = 0; i < 3; i++)
-			cudaMemset(pos[i], 0, sizeof(int) * n_gsvertices());
-		for (int i = 0; i < 8; i++) {
-			cudaDeviceSynchronize();
-			cuda_error_check;
-			testIndexerNeighCoarseVertex_kernel<<<grid_size, block_size>>>(n_gsvertices(), n_gscells(), i, vflags, pos);
-			cudaDeviceSynchronize();
-			cuda_error_check;
-			for (int k = 0; k < 3; k++) {
-				hostpos[k].resize(n_gsvertices());
-				cudaMemcpy(hostpos[k].data(), pos[k], sizeof(int) * n_gsvertices(), cudaMemcpyDeviceToHost);
-			}
-			char buf[100];
-			sprintf_s(buf, "./coarseneigh%d", i);
-			homoutils::writeVectors(getPath(buf), hostpos);
-		}
-	}
-	if (1) {
-		Coarse->useGrid_g();
-		for (int i = 0; i < 3; i++)
-			cudaMemset(pos[i], 0, sizeof(int) * n_gsvertices());
-		for (int i = 0; i < 27; i++) {
-			cudaDeviceSynchronize();
-			cuda_error_check;
-			testIndexerNeighFineVertex_kernel<<<grid_size, block_size>>>(Coarse->n_gsvertices(), i, Coarse->vertflag, pos);
-			cudaDeviceSynchronize();
-			cuda_error_check;
-			for (int k = 0; k < 3; k++) {
-				hostpos[k].resize(Coarse->n_gsvertices());
-				cudaMemcpy(hostpos[k].data(), pos[k], sizeof(int) * Coarse->n_gsvertices(), cudaMemcpyDeviceToHost);
-			}
-			char buf[100];
-			sprintf_s(buf, "./fineneigh%d", i);
-			homoutils::writeVectors(getPath(buf), hostpos);
-		}
-	}
-
-	for (int i = 0; i < 3; i++) {
-		getMem().deleteBuffer(pos[i]);
-	}
-}
-
 void homo::Grid::getGsVertexPos(std::vector<int> hostpos[3]) {
 	useGrid_g();
 	devArray_t<int*, 3> pos;
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, n_gsvertices(), 256);
+	auto cfg = make_kernel_param(n_gsvertices(), 256);
 	for (int i = 0; i < 3; i++) {
 		// auto buffer = getTempBuffer(sizeof(int) * n_gsvertices());
 		// pos[i] = buffer.data<int>();
 		cudaMallocManaged(&pos[i], sizeof(int) * n_gsvertices());
 		init_array(pos[i], -2, n_gsvertices());
 		// ...
-		gsid2pos_kernel<<<grid_size, block_size>>>(n_gsvertices(), vertflag, pos, i);
+		gsid2pos_kernel<<<cfg.grid, cfg.block>>>(n_gsvertices(), vertflag, pos, i);
 		cudaDeviceSynchronize();
 		cuda_error_check;
 		hostpos[i].resize(n_gsvertices());
@@ -3109,15 +2815,14 @@ void homo::Grid::getGsVertexPos(std::vector<int> hostpos[3]) {
 void homo::Grid::getGsElementPos(std::vector<int> hostpos[3]) {
 	useGrid_g();
 	devArray_t<int*, 3> pos;
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, n_gscells(), 256);
+	auto cfg = make_kernel_param(n_gscells(), 256);
 	for (int i = 0; i < 3; i++) {
 		// auto buffer = getTempBuffer(sizeof(int) * n_gscells());
 		// pos[i] = buffer.data<int>();
 		cudaMallocManaged(&pos[i], sizeof(int) * n_gscells());
 		init_array(pos[i], -2, n_gscells());
 		// ...
-		gsid2pos_kernel<<<grid_size, block_size>>>(n_gscells(), cellflag, pos, i);
+		gsid2pos_kernel<<<cfg.grid, cfg.block>>>(n_gscells(), cellflag, pos, i);
 		cudaDeviceSynchronize();
 		cuda_error_check;
 		hostpos[i].resize(n_gscells());
@@ -3152,12 +2857,6 @@ std::vector<homo::CellFlags> homo::Grid::getCellflags(void) {
 	std::vector<CellFlags> eflags(n_gscells());
 	cudaMemcpy(eflags.data(), cellflag, sizeof(CellFlags) * n_gscells(), cudaMemcpyDeviceToHost);
 	return eflags;
-}
-
-void homo::Grid::test(void) {
-	//useGrid_g();
-	//testIndexer();
-	//exit(0);
 }
 
 template<typename T, int N>
@@ -3249,9 +2948,8 @@ template<typename T, int N>
 void enforce_period_vertex_imp(T** v, std::array<int, 3> cellReso, VertexFlags* vertflag, bool additive /*= false*/) {
 	int nvdup = cellReso[0] * cellReso[1] + cellReso[1] * (cellReso[2] - 1) + (cellReso[0] - 1) * (cellReso[2] - 1);
 	devArray_t<T*, N> varr(v);
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, nvdup, 256);
-	enforce_period_boundary_vertex_kernel<<<grid_size, block_size>>>(nvdup, varr, vertflag, additive);
+	auto cfg = make_kernel_param(nvdup, 256);
+	enforce_period_boundary_vertex_kernel<<<cfg.grid, cfg.block>>>(nvdup, varr, vertflag, additive);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 }
@@ -3472,9 +3170,8 @@ void homo::Grid::enforce_period_element(float* celldata) {
 	int nedup = cellReso[0] * cellReso[1] +
 				cellReso[1] * cellReso[2] +
 				cellReso[0] * cellReso[2];
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, nedup, 256);
-	enforce_period_element_kernel<<<grid_size, block_size>>>(nedup, celldata, cellflag);
+	auto cfg = make_kernel_param(nedup, 256);
+	enforce_period_element_kernel<<<cfg.grid, cfg.block>>>(nedup, celldata, cellflag);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 }
@@ -3482,64 +3179,8 @@ void homo::Grid::enforce_period_element(half* celldata) {
 	int nedup = cellReso[0] * cellReso[1] +
 				cellReso[1] * cellReso[2] +
 				cellReso[0] * cellReso[2];
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, nedup, 256);
-	enforce_period_element_kernel<<<grid_size, block_size>>>(nedup, celldata, cellflag);
-	cudaDeviceSynchronize();
-	cuda_error_check;
-}
-
-__global__ void testVflags_kernel(int nv, VertexFlags* vflags) {
-	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
-	if (tid >= nv)
-		return;
-	VertexFlags vflag = vflags[tid];
-
-	if (vflag.is_fiction())
-		return;
-
-	GridVertexIndex indexer(gGridCellReso[0], gGridCellReso[1], gGridCellReso[2]);
-
-	indexer.locate(tid, vflag.get_gscolor(), gGsVertexEnd);
-	auto pos = indexer.getPos();
-
-	int p[3] = {pos.x, pos.y, pos.z};
-	if (lexi2gs(p, gGsVertexReso, gGsVertexEnd, true) != tid) {
-		print_exception;
-	}
-
-	if (vflag.is_set(LEFT_BOUNDARY)) {
-		if (pos.x != 1) {
-			print_exception;
-		}
-	}
-	if (vflag.is_set(RIGHT_BOUNDARY)) {
-		if (pos.x != gGridCellReso[0] + 1)
-			print_exception;
-	}
-	if (vflag.is_set(NEAR_BOUNDARY)) {
-		if (pos.y != 1)
-			print_exception;
-	}
-	if (vflag.is_set(FAR_BOUNDARY)) {
-		if (pos.y != gGridCellReso[1] + 1)
-			print_exception;
-	}
-	if (vflag.is_set(DOWN_BOUNDARY)) {
-		if (pos.z != 1)
-			print_exception;
-	}
-	if (vflag.is_set(UP_BOUNDARY)) {
-		if (pos.z != gGridCellReso[2] + 1)
-			print_exception;
-	}
-}
-
-void homo::Grid::testVflags(void) {
-	useGrid_g();
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, n_gsvertices(), 256);
-	testVflags_kernel<<<grid_size, block_size>>>(n_gsvertices(), vertflag);
+	auto cfg = make_kernel_param(nedup, 256);
+	enforce_period_element_kernel<<<cfg.grid, cfg.block>>>(nedup, celldata, cellflag);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 }
@@ -3564,11 +3205,10 @@ std::vector<int> homo::Grid::getVertexLexidMap(void) {
 	int* tmp = getMem().getBuffer(tmpname)->data<int>();
 
 	int nv = (cellReso[0] + 1) * (cellReso[1] + 1) * (cellReso[2] + 1);
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, nv, 256);
+	auto cfg = make_kernel_param(nv, 256);
 	std::vector<int> vidmap(nv);
 
-	vertexlexid_kernel<<<grid_size, block_size>>>(tmp);
+	vertexlexid_kernel<<<cfg.grid, cfg.block>>>(tmp);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 
@@ -3599,11 +3239,10 @@ std::vector<int> homo::Grid::getCellLexidMap(void) {
 	int* tmp = getMem().getBuffer(tmpname)->data<int>();
 
 	int ne = cellReso[0] * cellReso[1] * cellReso[2];
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, ne, 256);
+	auto cfg = make_kernel_param(ne, 256);
 	std::vector<int> eidmap(ne);
 
-	celllexid_kernel<<<grid_size, block_size>>>(tmp);
+	celllexid_kernel<<<cfg.grid, cfg.block>>>(tmp);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 
@@ -3642,35 +3281,6 @@ void homo::Grid::enforce_dirichlet_boundary(float* v[3]) {
 
 void homo::Grid::enforce_dirichlet_boundary(half* v[3]) {
 	enforce_dirichlet_boundary_imp(v, cellReso, gsVertexReso, gsVertexSetEnd);
-}
-
-template<typename T>
-__global__ void v3_wave_kernel(int nv, VertexFlags* vflags, devArray_t<T, 3> rad, devArray_t<T*, 3> v) {
-	size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
-	if (tid >= nv)
-		return;
-	VertexFlags vflag = vflags[tid];
-	if (vflag.is_period_padding() || vflag.is_fiction())
-		return;
-	GridVertexIndex indexer(gGridCellReso[0], gGridCellReso[1], gGridCellReso[2]);
-	indexer.locate(tid, vflag.get_gscolor(), gGsVertexEnd);
-	auto pos = indexer.getPos();
-	float u[3] = {sinf(float(rad[0]) * (pos.x - 1)), sinf(float(rad[1]) * (pos.y - 1)), sinf(float(rad[2]) * (pos.z - 1))};
-	for (int i = 0; i < 3; i++) {
-		v[i][tid] = u[i];
-	}
-}
-
-void homo::Grid::v3_wave(VT* u[3], const std::array<VT, 3>& radi) {
-	useGrid_g();
-	devArray_t<VT, 3> w{radi[0], radi[1], radi[2]};
-	devArray_t<VT*, 3> v{u[0], u[1], u[2]};
-	int nv = n_gsvertices();
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, nv, 256);
-	v3_wave_kernel<<<grid_size, block_size>>>(nv, vertflag, w, v);
-	cudaDeviceSynchronize();
-	cuda_error_check;
 }
 
 template<typename T, typename Tout, int BlockSize = 256>
@@ -3752,12 +3362,11 @@ float homo::Grid::v3_dot(VT* v[3], VT* u[3], bool removePeriodDof /*= false*/, i
 		int nv = n_gsvertices();
 		auto buffer = getTempBuffer(nv / 100 * sizeof(float));
 		float* p_tmp = buffer.template data<float>();
-		size_t grid_size, block_size;
 		int batch = nv;
-		make_kernel_param(&grid_size, &block_size, batch, 256);
-		v3_dot_kernel<<<grid_size, block_size>>>(nv, vertflag, vlist, ulist, p_tmp, removePeriodDof);
+		auto cfg = make_kernel_param(batch, 256);
+		v3_dot_kernel<<<cfg.grid, cfg.block>>>(nv, vertflag, vlist, ulist, p_tmp, removePeriodDof);
 		cudaDeviceSynchronize();
-		double s = dump_array_sum(p_tmp, grid_size);
+		double s = dump_array_sum(p_tmp, cfg.grid);
 		cuda_error_check;
 		return s;
 	}
@@ -3946,9 +3555,8 @@ void homo::Grid::v3_stencilOnLeft(VT* v[3], VT* Kv[3]) {
 	devArray_t<int, 3> gridCellReso{cellReso[0], cellReso[1], cellReso[2]};
 	VertexFlags* vflags = vertflag;
 	CellFlags* eflags = cellflag;
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, n_gsvertices() * 8, 32 * 8);
-	v3_stencilOnLeft_kernel<<<grid_size, block_size>>>(n_gsvertices(), rho_g, varr, Kvarr, gridCellReso, vflags, eflags);
+	auto cfg = make_kernel_param(n_gsvertices() * 8, 32 * 8);
+	v3_stencilOnLeft_kernel<<<cfg.grid, cfg.block>>>(n_gsvertices(), rho_g, varr, Kvarr, gridCellReso, vflags, eflags);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 	pad_vertex_data(Kv);
@@ -3982,10 +3590,9 @@ __global__ void v3_removeT_kernel(int nv, VertexFlags* vflags, devArray_t<T*, 3>
 void homo::Grid::v3_removeT(VT* u[3], VT tHost[3]) {
 	devArray_t<VT*, 3> uarr{u[0], u[1], u[2]};
 	devArray_t<VT, 3> tArr{tHost[0], tHost[1], tHost[2]};
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, n_gsvertices(), 256);
+	auto cfg = make_kernel_param(n_gsvertices(), 256);
 	int nv = n_gsvertices();
-	v3_removeT_kernel<<<grid_size, block_size>>>(nv, vertflag, uarr, tArr);
+	v3_removeT_kernel<<<cfg.grid, cfg.block>>>(nv, vertflag, uarr, tArr);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 }
@@ -4075,25 +3682,24 @@ void homo::Grid::v3_average(VT* v[3], VT vMean[3], bool removePeriodDof /*= fals
 	devArray_t<float*, 3> v3out{v3tmp[0] + le / 2, v3tmp[1] + le / 2, v3tmp[2] + le / 2};
 
 	devArray_t<VT*, 3> vlist{v[0], v[1], v[2]};
-	size_t grid_size, block_size;
 	int rest = n_gsvertices();
-	make_kernel_param(&grid_size, &block_size, rest, 256);
-	if (le / 2 < grid_size)
+	auto cfg = make_kernel_param(rest, 256);
+	if (le / 2 < cfg.grid)
 		print_exception;
-	v3_average_kernel<<<grid_size, block_size>>>(vlist, vertflag, rest, v3tmp, removePeriodDof, true);
+	v3_average_kernel<<<cfg.grid, cfg.block>>>(vlist, vertflag, rest, v3tmp, removePeriodDof, true);
 	cudaDeviceSynchronize();
 	cuda_error_check;
-	rest = grid_size;
+	rest = cfg.grid;
 
 	while (rest > 1) {
-		make_kernel_param(&grid_size, &block_size, rest, 256);
-		if (le / 2 < grid_size)
+		cfg = make_kernel_param(rest, 256);
+		if (le / 2 < cfg.grid)
 			print_exception;
-		v3_average_kernel<<<grid_size, block_size>>>(v3tmp, vertflag, rest, v3out, removePeriodDof, false);
+		v3_average_kernel<<<cfg.grid, cfg.block>>>(v3tmp, vertflag, rest, v3out, removePeriodDof, false);
 		cudaDeviceSynchronize();
 		for (int i = 0; i < 3; i++)
 			std::swap(v3tmp[i], v3out[i]);
-		rest = grid_size;
+		rest = cfg.grid;
 	}
 
 	float vMean_f[3];
@@ -4129,10 +3735,9 @@ __global__ void v3_const_kernel(int nv, VertexFlags* vflags, devArray_t<T*, 3> u
 void homo::Grid::v3_const(VT* v[3], const VT v_const[3]) {
 	devArray_t<VT*, 3> uarr{v[0], v[1], v[2]};
 	devArray_t<VT, 3> tArr{v_const[0], v_const[1], v_const[2]};
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, n_gsvertices(), 256);
+	auto cfg = make_kernel_param(n_gsvertices(), 256);
 	int nv = n_gsvertices();
-	v3_const_kernel<<<grid_size, block_size>>>(nv, vertflag, uarr, tArr);
+	v3_const_kernel<<<cfg.grid, cfg.block>>>(nv, vertflag, uarr, tArr);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 }
@@ -4308,9 +3913,8 @@ void pad_cell_data_imp(T* e, CellFlags* eflags, std::array<int, 3> cellReso, int
 		gsend[i] = gsCellSetEnd[i];
 	}
 	devArray_t<T*, 1> arr{e};
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, nsrcpadd, 256);
-	pad_data_kernel<<<grid_size, block_size>>>(nsrcpadd, arr, eflags, resopad, padbase, period, resolist, gsreso, gsend);
+	auto cfg = make_kernel_param(nsrcpadd, 256);
+	pad_data_kernel<<<cfg.grid, cfg.block>>>(nsrcpadd, arr, eflags, resopad, padbase, period, resolist, gsreso, gsend);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 }
@@ -4334,12 +3938,11 @@ void homo::Grid::update(float* rho, int pitchT, bool lexiOrder /*= true*/) {
 		//	cudaMemcpy(hostrho.data(), rho, sizeof(float) * n_cells(), cudaMemcpyDeviceToHost);
 		//	array2matlab("srcrho", hostrho.data(), hostrho.size());
 		//}
-		size_t grid_size, block_size;
 		int nv = n_gsvertices();
 		auto vflags = vertflag;
 		auto eflags = cellflag;
-		make_kernel_param(&grid_size, &block_size, nv, 256);
-		update_rho_kernel<<<grid_size, block_size>>>(nv, vflags, eflags, rho, pitchT, rho_g);
+		auto cfg = make_kernel_param(nv, 256);
+		update_rho_kernel<<<cfg.grid, cfg.block>>>(nv, vflags, eflags, rho, pitchT, rho_g);
 		cudaDeviceSynchronize();
 		cuda_error_check;
 		//{
@@ -4403,9 +4006,8 @@ void enforceCellSymmetry_imp(T* celldata, SymmetryType sym, bool average, std::a
 		return;
 	int repReso[3] = {cellReso[0] / 2, cellReso[1] / 2, cellReso[2] / 2};
 	int n_rep = repReso[0] * repReso[1] * repReso[2];
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, n_rep, 256);
-	enforceCellSymmetry_kernel<<<grid_size, block_size>>>(celldata, sym, average);
+	auto cfg = make_kernel_param(n_rep, 256);
+	enforceCellSymmetry_kernel<<<cfg.grid, cfg.block>>>(celldata, sym, average);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 }
@@ -4442,9 +4044,8 @@ void homo::Grid::projectDensity(float k, float eta, float a, float b) {
 	useGrid_g();
 	int ne = n_gscells();
 	CellFlags* eflags = cellflag;
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, ne, 256);
-	projectDensity_kernel<<<grid_size, block_size>>>(ne, eflags, rho_g, k, eta, a, b);
+	auto cfg = make_kernel_param(ne, 256);
+	projectDensity_kernel<<<cfg.grid, cfg.block>>>(ne, eflags, rho_g, k, eta, a, b);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 	pad_cell_data(rho_g);
@@ -4544,10 +4145,9 @@ __global__ void checkPeriodVertex_kernel(int nv, devArray_t<T*, N> v, VertexFlag
 
 template<typename T, int N>
 void checkPeriodVertex_imp(int nv, VertexFlags* vertflag, T* v[N]) {
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, nv, 256);
+	auto cfg = make_kernel_param(nv, 256);
 	devArray_t<T*, N> varr(v);
-	checkPeriodVertex_kernel<<<grid_size, block_size>>>(nv, varr, vertflag);
+	checkPeriodVertex_kernel<<<cfg.grid, cfg.block>>>(nv, varr, vertflag);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 }

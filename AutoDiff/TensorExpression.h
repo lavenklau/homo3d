@@ -2,6 +2,7 @@
 #include "AutoDiff.h"
 #include <array>
 #include <iterator>
+#include <tuple>
 
 #ifdef __CUDACC__
 #include "culib/lib.cuh"
@@ -14,15 +15,9 @@ using namespace culib;
 #undef max
 #undef min
 
-#define TENSOR_WITH_MATLAB
-
 namespace homo {
 template<typename T, bool Const = false>
 struct TensorView;
-#ifdef TENSOR_WITH_MATLAB
-extern void tensor2matlab(const std::string& tname, const TensorView<float>& tf);
-extern void tensor2matlab(const std::string& tname, const TensorView<double>& tf);
-#endif
 extern void tensor2vdb(const std::string& fname, const TensorView<float>& tf);
 extern void tensor2vdb(const std::string& fname, const TensorView<double>& tf);
 extern void vdb2tensor(const std::string& fname, TensorView<float> tf, bool interpolation = true);
@@ -45,31 +40,19 @@ struct TensorBuffer {
 	cudaPitchedPtr ptr;
 	cudaExtent dim;
 	TensorBuffer(cudaExtent dim_) {
-#ifdef __CUDACC__
 		ptr.ptr = nullptr;
 		dim = dim_;
 		dim_.width *= sizeof(T);
-#if 0
-			auto err = cudaMalloc3D(&ptr, dim_);
-#else
 		ptr.pitch = (dim_.width + 511) / 512 * 512;
 		ptr.xsize = dim_.width / sizeof(T);
 		ptr.ysize = dim_.depth * dim_.height;
 		auto err = cudaMallocManaged(&ptr.ptr, ptr.pitch * ptr.ysize);
-#endif
 		if (err) {
 			CheckErr(err);
 			printf("memory allocation failed,  dim = (%zu, %zu, %zu), siz = %zu",
 				   dim_.width, dim_.height, dim_.depth, dim_.width * dim_.height * dim_.depth);
 			throw std::runtime_error("failed to allocate 3d memory");
 		}
-#else
-		dim = dim_;
-		ptr.pitch = (dim_.width * sizeof(T) + 63) / 64 * 64;
-		ptr.xsize = dim.width;
-		ptr.ysize = dim.height * dim.depth;
-		cudaMallocHost(&ptr.ptr, ptr.pitch * dim_.height * dim_.depth);
-#endif
 	}
 	int getDim(int axis) const {
 		if (axis == 0)
@@ -82,14 +65,7 @@ struct TensorBuffer {
 			return -1;
 	}
 	void reset(T initval = 0) {
-#ifdef __CUDACC__
-		//cudaMemset(ptr.ptr, 0, total());
 		init_array(data(), initval, size_elements());
-#else
-		for (int i = 0; i < size_elements(); i++) {
-			((T*)(ptr.ptr))[i] = initval;
-		}
-#endif
 	}
 	size_t size(void) const {
 		return ptr.pitch * dim.height * dim.depth;
@@ -104,11 +80,7 @@ struct TensorBuffer {
 		cudaMemcpy(ptr.ptr, t2.ptr.ptr, size(), cudaMemcpyDeviceToDevice);
 	}
 	~TensorBuffer() {
-#ifdef __CUDACC__
 		cudaFree(ptr.ptr);
-#else
-		cudaFreeHost(ptr.ptr);
-#endif
 	}
 	T* data(void) {
 		return (T*)ptr.ptr;
@@ -131,12 +103,12 @@ struct TensorIterator
 		id += location;
 		return p_data[id % x + id / x * pitchT];
 	}
-	__host_device_func __forceinline__ TensorIterator& operator+(size_t id) {
+	__host_device_func __forceinline__ TensorIterator operator+(size_t id) const {
 		TensorIterator iter(*this);
 		iter.location += id;
 		return iter;
 	}
-	__host_device_func __forceinline__ TensorIterator& operator-(size_t id) {
+	__host_device_func __forceinline__ TensorIterator operator-(size_t id) const {
 		TensorIterator iter(*this);
 		iter.location -= id;
 		return iter;
@@ -215,42 +187,6 @@ struct TensorView {
 	}
 };
 
-template<typename T>
-struct TensorView<T, true> {
-	T constVal;
-	size_t pitchT;
-	int dim[3];
-	typedef T Scalar;
-	TensorView(TensorBuffer<T>& shapeLike, T val)
-		: constVal(val) {
-		pitchT = shapeLike.ptr.pitch / sizeof(T);
-		dim[0] = shapeLike.dim.width;
-		dim[1] = shapeLike.dim.height;
-		dim[2] = shapeLike.dim.depth;
-	}
-	__host_device_func TensorView(const TensorView& view2) = default;
-	__host_device_func int size(void) const {
-		return dim[0] * dim[1] * dim[2];
-	}
-	__host_device_func int size(int i) const {
-		return dim[i];
-	}
-	__host_device_func void index(int n, int id[3]) {
-		id[0] = n % dim[0];
-		id[1] = n / dim[0] % dim[1];
-		id[2] = n / dim[0] / dim[1];
-	}
-	__device_func T operator()(int i) {
-		return constVal;
-	}
-	__device_func T operator()(int i, int j) {
-		return constVal;
-	}
-	__device_func T operator()(int i, int j, int k) {
-		return constVal;
-	}
-};
-
 enum Order {
 	i,
 	j,
@@ -298,103 +234,17 @@ struct Tensor {
 		buf.reset();
 	}
 	void rand(T low, T upp) {
-#ifdef __CUDACC__
 		tensor_rand(view(), low, upp);
-#else
-#endif
 	}
-#ifdef TENSOR_WITH_MATLAB
-	void toMatlab(const std::string& tname) {
-		tensor2matlab(tname, view());
-	}
-#else
-	void toMatlab(const std::string& tname) {}
-#endif
 	void toVdb(const std::string& fname) {
 		tensor2vdb(fname, view());
 	}
 	void fromVdb(const std::string& fname, bool interpolation = true) {
 		vdb2tensor(fname, view(), interpolation);
 	}
-	void fromHost(const std::vector<T>& hostT) {
-#ifdef __CUDACC__
-		auto tf = view();
-		cudaMemcpy2D(tf.data(), tf.getPitchT() * sizeof(float),
-					 hostT.data(), tf.size(0) * sizeof(float), tf.size(0) * sizeof(float),
-					 tf.size(1) * tf.size(2), cudaMemcpyHostToDevice);
-		cuda_error_check;
-#endif
-	}
-	void toHost(std::vector<T>& hostT) {
-#ifdef __CUDACC__
-		auto tf = view();
-		cudaMemcpy2D(hostT.data(), tf.size(0) * sizeof(float),
-					 tf.data(), tf.getPitchT() * sizeof(float),
-					 tf.size(0) * sizeof(float), tf.size(1) * tf.size(2), cudaMemcpyDeviceToHost);
-		cuda_error_check;
-#endif
-	}
 	void proj(float beta = 20.f, float eta = 0.5f, float a = 1.f, float b = 0.f) {
 		tensorProject(view(), beta, eta, a, b);
 	}
-	template<int N>
-	static Tensor<T> range(std::array<T, N> start, std::array<T, N> end, std::array<int, N> steps, Order axis) {
-		if (axis >= 3)
-			return Tensor<T>();
-		//cudaExtent extents;
-		//extents.width = steps[0] + 1;
-		//if constexpr (N >= 1) extents.height = steps[1] + 1; else extents.height = 1;
-		//if constexpr (N >= 2) extents.depth = steps[2] + 1; else extents.depth = 1;
-		//steps[0] += 1; steps[1] += 1; steps[2] += 1;
-		std::array<int, 3> newdims;
-		for (int i = 0; i < 3; i++)
-			if (i < N)
-				newdims[i] = steps[i] + 1;
-			else
-				newdims[i] = 1;
-		Tensor<T> rangeBuf(newdims);
-		//buf = std::make_shared<TensorBuffer<T>>(extents);
-#ifdef __CUDACC__
-		devArray_t<T, 3> s1, s2;
-		devArray_t<int, 3> ns;
-		for (int i = 0; i < 3; i++) {
-			if (i < N) {
-				s1[i] = start[i];
-				s2[i] = end[i];
-				ns[i] = steps[i];
-			} else {
-				s1[i] = 0;
-				s2[i] = 0;
-				ns[i] = 0;
-			}
-		}
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, rangeBuf.size_elements(), 256);
-		range_kernel<<<grid_size, block_size>>>(s1, s2, ns, rangeBuf.view(), axis);
-		cudaDeviceSynchronize();
-		cuda_error_check;
-#else
-		auto dataview = rangeBuf.view();
-		T slen[3] = {
-			(end[0] - start[0]) / steps[0],
-			(end[1] - start[1]) / steps[1],
-			(end[2] - start[2]) / steps[2]};
-		int siz = rangeBuf.size_elements();
-		for (int i = 0; i < siz; i++) {
-			int pos[3];
-			dataview.index(i, pos);
-			dataview(i) = pos[axis] * slen[axis] + start[axis];
-		}
-#endif
-		return rangeBuf;
-	}
-	static Tensor<T> range(T start, T end, int steps) {
-		std::array<T, 3> startlist{start, 0, 0};
-		std::array<T, 3> endlist{end, 0, 0};
-		std::array<int, 3> stepslist{steps, 0, 0};
-		return range(startlist, endlist, stepslist, Order::i);
-	}
-
 	void copy(Tensor<T> t2) {
 		buf->copy(*t2.buf);
 	}
@@ -406,6 +256,7 @@ struct Tensor {
 	int length(int axis) const {
 		if (axis < 3)
 			return buf->getDim(axis);
+		return 0;
 	}
 	int size(int k) const {
 		return view().size(k);
@@ -419,22 +270,6 @@ struct Tensor {
 		MaxOp<AbsWrapT<T>> maxop;
 		T maxValue = sequence_reduce(iter, maxop, view().size(), AbsWrapT<T>(0));
 		return maxValue;
-#endif
-	}
-	T max(void) {
-#ifdef __CUDACC__
-		auto iter = view().begin();
-		MaxOp<T> maxop;
-		T maxValue = sequence_reduce(iter, maxop, view().size(), std::numeric_limits<T>::lowest());
-		return maxValue;
-#endif
-	}
-	T min(void) {
-#ifdef __CUDACC__
-		auto iter = view().begin();
-		MinOp<T> minop;
-		T minValue = sequence_reduce(iter, minop, view().size(), std::numeric_limits<T>::lowest());
-		return minValue;
 #endif
 	}
 	T Sum(void) {
@@ -462,9 +297,8 @@ struct Tensor {
 	template<typename InitFunc>
 	void setValue(InitFunc func) {
 		TensorView<T> myview = view();
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, myview.size(), 256);
-		::map<<<grid_size, block_size>>>(myview.size(), [=] __device__(int tid) {
+		auto cfg = make_kernel_param(myview.size(), 256);
+		::map<<<cfg.grid, cfg.block>>>(myview.size(), [=] __device__(int tid) {
 			TensorView<T> vi = myview;
 			int p[3] = {
 				tid % vi.dim[0],
@@ -477,7 +311,6 @@ struct Tensor {
 	}
 #endif
 	void symmetrize(TensorSym symtype, bool average = true) {
-#ifdef __CUDACC__
 		auto myview = view();
 		int nrep;
 		if (symtype == Reflection3) {
@@ -489,13 +322,10 @@ struct Tensor {
 			int res[3] = {myview.size(0) / 2, myview.size(1) / 2, myview.size(2) / 2};
 			nrep = res[2] * (res[2] + 1) * (2 * res[2] + 1) / 6;
 		}
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, nrep, 256);
-		symetrize_tensor_kernel<<<grid_size, block_size>>>(myview, symtype, average);
+		auto cfg = make_kernel_param(nrep, 256);
+		symetrize_tensor_kernel<<<cfg.grid, cfg.block>>>(myview, symtype, average);
 		cudaDeviceSynchronize();
 		cuda_error_check;
-#else
-#endif
 	}
 	[[nodiscard]] T* data(void) {
 		return buf->data();
@@ -505,11 +335,9 @@ struct Tensor {
 	}
 	template<typename Lambda>
 	void mapInplace(Lambda mapker) {
-#ifdef __CUDACC__
 		TensorView<T> myview = view();
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, myview.size(), 256);
-		traverse_noret<<<grid_size, block_size>>>(myview.size(), [=] __device__(int tid) {
+		auto cfg = make_kernel_param(myview.size(), 256);
+		traverse_noret<<<cfg.grid, cfg.block>>>(myview.size(), [=] __device__(int tid) {
 			TensorView<T> vi = myview;
 			int p[3];
 			vi.index(tid, p);
@@ -518,8 +346,6 @@ struct Tensor {
 		});
 		cudaDeviceSynchronize();
 		cuda_error_check;
-#else
-#endif
 	}
 	void clamp(T low, T upp) {
 		mapInplace([=] __device__(int i, int j, int k, T val) {
@@ -582,99 +408,64 @@ IS_TYPE_V(exp_umker)
 
 template<typename subExp_t, typename T>
 struct tsexp_method_t {
-	template<typename Scalar = T,
-			 typename SubExp = subExp_t,
-			 std::enable_if_t<is_unarymap_tsexp_v<SubExp>, int> = 0>
-	__host_device_func auto pow(Scalar p) {
-		pow_umker_t<T, eye_umker_t<T>> powker(eye_umker_t<T>(), p);
-		auto& subexp = *static_cast<SubExp*>(this);
-		return subexp.composite(powker);
-	}
-
-	template<typename Scalar = T,
-			 typename SubExp = subExp_t,
-			 std::enable_if_t<!is_unarymap_tsexp_v<SubExp>, int> = 0>
+	template<typename Scalar = T, typename SubExp = subExp_t>
 	__host_device_func auto pow(Scalar p) {
 		using Kernel = pow_umker_t<T, eye_umker_t<T>>;
 		Kernel powker(eye_umker_t<T>(), p);
 		auto& subexp = *static_cast<SubExp*>(this);
-		return unarymap_tsexp_t<T, Kernel, SubExp>(subexp, powker);
+		if constexpr (is_unarymap_tsexp_v<SubExp>) {
+			return subexp.composite(powker);
+		} else {
+			return unarymap_tsexp_t<T, Kernel, SubExp>(subexp, powker);
+		}
 	}
 
-	template<typename Scalar = T,
-			 typename SubExp = subExp_t,
-			 std::enable_if_t<is_unarymap_tsexp_v<SubExp>, int> = 0>
-	__host_device_func auto exp(void) {
-		exp_umker_t<T, eye_umker_t<T>> expker((eye_umker_t<T>()));
-		auto& subexp = *static_cast<SubExp*>(this);
-		return subexp.composite(expker);
-	}
-
-	template<typename Scalar = T,
-			 typename SubExp = subExp_t,
-			 std::enable_if_t<!is_unarymap_tsexp_v<SubExp>, int> = 0>
+	template<typename Scalar = T, typename SubExp = subExp_t>
 	__host_device_func auto exp(void) {
 		using Kernel = exp_umker_t<T, eye_umker_t<T>>;
 		Kernel expker((eye_umker_t<T>()));
 		auto& subexp = *static_cast<SubExp*>(this);
-		return unarymap_tsexp_t<T, Kernel, SubExp>(subexp, expker);
+		if constexpr (is_unarymap_tsexp_v<SubExp>) {
+			return subexp.composite(expker);
+		} else {
+			return unarymap_tsexp_t<T, Kernel, SubExp>(subexp, expker);
+		}
 	}
 
-	template<typename Scalar = T,
-			 typename SubExp = subExp_t,
-			 std::enable_if_t<is_unarymap_tsexp_v<SubExp>, int> = 0>
-	__host_device_func auto sgm(Scalar k = 30, Scalar c = 0.5) {
-		sigmoid_umker_t<T, eye_umker_t<T>> sgmker((eye_umker_t<T>()), k, c);
-		auto& subexp = *static_cast<SubExp*>(this);
-		return subexp.composite(sgmker);
-	}
-
-	template<typename Scalar = T,
-			 typename SubExp = subExp_t,
-			 std::enable_if_t<!is_unarymap_tsexp_v<SubExp>, int> = 0>
+	template<typename Scalar = T, typename SubExp = subExp_t>
 	__host_device_func auto sgm(Scalar k = 30, Scalar c = 0.5) {
 		using Kernel = sigmoid_umker_t<T, eye_umker_t<T>>;
 		Kernel sgmker((eye_umker_t<T>()), k, c);
 		auto& subexp = *static_cast<SubExp*>(this);
-		return unarymap_tsexp_t<T, Kernel, SubExp>(subexp, sgmker);
+		if constexpr (is_unarymap_tsexp_v<SubExp>) {
+			return subexp.composite(sgmker);
+		} else {
+			return unarymap_tsexp_t<T, Kernel, SubExp>(subexp, sgmker);
+		}
 	}
 
-	template<typename Scalar = T,
-			 typename SubExp = subExp_t,
-			 std::enable_if_t<is_unarymap_tsexp_v<SubExp>, int> = 0>
-	__host_device_func auto operator*(Scalar a) {
-		linear_umker_t<T, eye_umker_t<T>> linker(eye_umker_t<T>(), a, 1);
-		auto& subexp = *static_cast<SubExp*>(this);
-		return subexp.composite(linker);
-	}
-
-	template<typename Scalar = T,
-			 typename SubExp = subExp_t,
-			 std::enable_if_t<!is_unarymap_tsexp_v<SubExp>, int> = 0>
+	template<typename Scalar = T, typename SubExp = subExp_t>
 	__host_device_func auto operator*(Scalar a) {
 		using Kernel = linear_umker_t<T, eye_umker_t<T>>;
 		Kernel linker(eye_umker_t<T>(), a, 1);
 		auto& subexp = *static_cast<SubExp*>(this);
-		return unarymap_tsexp_t<T, Kernel, SubExp>(subexp, linker);
+		if constexpr (is_unarymap_tsexp_v<SubExp>) {
+			return subexp.composite(linker);
+		} else {
+			return unarymap_tsexp_t<T, Kernel, SubExp>(subexp, linker);
+		}
 	}
 
-	template<typename Scalar = T,
-			 typename SubExp = subExp_t,
-			 std::enable_if_t<is_unarymap_tsexp_v<SubExp>, int> = 0>
-	__host_device_func auto operator+(Scalar b) {
-		linear_umker_t<T, eye_umker_t<T>> linker(eye_umker_t<T>(), 1, b);
-		auto& subexp = *static_cast<SubExp*>(this);
-		return subexp.composite(linker);
-	}
-
-	template<typename Scalar = T,
-			 typename SubExp = subExp_t,
-			 std::enable_if_t<!is_unarymap_tsexp_v<SubExp>, int> = 0>
+	template<typename Scalar = T, typename SubExp = subExp_t>
 	__host_device_func auto operator+(Scalar b) {
 		using Kernel = linear_umker_t<T, eye_umker_t<T>>;
 		Kernel linker(eye_umker_t<T>(), 1, b);
 		auto& subexp = *static_cast<SubExp*>(this);
-		return unarymap_tsexp_t<T, Kernel, SubExp>(subexp, linker);
+		if constexpr (is_unarymap_tsexp_v<SubExp>) {
+			return subexp.composite(linker);
+		} else {
+			return unarymap_tsexp_t<T, Kernel, SubExp>(subexp, linker);
+		}
 	}
 
 	template<typename ConvKernel>
@@ -691,6 +482,11 @@ struct tsexp_method_t {
 	__host_device_func auto pnorm(T p) {
 		auto& subexp = *static_cast<subExp_t*>(this);
 		return reduce_tsexp_t<T, subExp_t, PnormReduceOp<T>>(subexp, PnormReduceOp<T>(p));
+	}
+
+	__host_device_func auto logsumexp(void) {
+		auto& subexp = *static_cast<subExp_t*>(this);
+		return reduce_tsexp_t<T, subExp_t, LogSumExpOp<T>>(subexp, LogSumExpOp<T>());
 	}
 
 	__host_device_func auto operator/(T x) {
@@ -784,29 +580,23 @@ struct scalar_traits<tsexp_t<subTensor, Scalar>> {
 
 template<typename Scalar, typename subKer>
 struct um_ker_t {
-	template<typename opKer, typename SubKer = subKer,
-			 std::enable_if_t<is_linear_umker_v<SubKer>, int> = 0>
+	template<typename opKer, typename SubKer = subKer>
 	__host_device_func auto composite(const linear_umker_t<Scalar, opKer>& op) {
 		auto& subker = static_cast<SubKer&>(*this);
-		return linear_umker_t<Scalar, typename SubKer::opExp_t>(subker.op, subker.a * op.a, op.b + op.a * subker.b);
+		if constexpr (is_linear_umker_v<SubKer>) {
+			return linear_umker_t<Scalar, typename SubKer::opExp_t>(subker.op, subker.a * op.a, op.b + op.a * subker.b);
+		} else {
+			return linear_umker_t<Scalar, SubKer>(subker, op.a, op.b);
+		}
 	}
-	template<typename opKer, typename SubKer = subKer,
-			 std::enable_if_t<!is_linear_umker_v<SubKer>, int> = 0>
-	__host_device_func auto composite(const linear_umker_t<Scalar, opKer>& op) {
-		auto& subker = static_cast<SubKer&>(*this);
-		return linear_umker_t<Scalar, SubKer>(subker, op.a, op.b);
-	}
-	template<typename opKer, typename SubKer = subKer,
-			 std::enable_if_t<is_pow_umker_v<SubKer>, int> = 0>
+	template<typename opKer, typename SubKer = subKer>
 	__host_device_func auto composite(const pow_umker_t<Scalar, opKer>& op) {
 		auto& subker = static_cast<SubKer&>(*this);
-		return pow_umker_t<Scalar, typename SubKer::opExp_t>(subker.op, op.p + subker.p);
-	}
-	template<typename opKer, typename SubKer = subKer,
-			 std::enable_if_t<!is_pow_umker_v<SubKer>, int> = 0>
-	__host_device_func auto composite(const pow_umker_t<Scalar, opKer>& op) {
-		auto& subker = static_cast<SubKer&>(*this);
-		return pow_umker_t<Scalar, SubKer>(subker, op.p);
+		if constexpr (is_pow_umker_v<SubKer>) {
+			return pow_umker_t<Scalar, typename SubKer::opExp_t>(subker.op, op.p + subker.p);
+		} else {
+			return pow_umker_t<Scalar, SubKer>(subker, op.p);
+		}
 	}
 	template<typename opKer, typename SubKer = subKer>
 	__host_device_func auto composite(const exp_umker_t<Scalar, opKer>& op) {
@@ -971,30 +761,13 @@ struct unarymap_tsexp_t
 	__host_device_func void eval_imp(Tensor<Scalar> vals) {
 		op.eval();
 		Base::requireTempbuf();
-#ifdef __CUDACC__
-		size_t grid_size, block_size;
 		auto accs = op.value().view();
 		auto sdif = Base::getTemp().view();
 		auto accd = Base::value().view();
-		//op.value().toMatlab("umsrc");
-		//cudaDeviceSynchronize();
-		//cuda_error_check;
-		make_kernel_param(&grid_size, &block_size, Base::n_valid(), 256);
-		// (AccS accs, AccSdiff sdif, Accd accd, size_t n_tol, Kernel ker);
-		unarymap_kernel<<<grid_size, block_size>>>(accs, sdif, accd, Base::n_valid(), ker);
+		auto cfg = make_kernel_param(Base::n_valid(), 256);
+		unarymap_kernel<<<cfg.grid, cfg.block>>>(accs, sdif, accd, Base::n_valid(), ker);
 		cudaDeviceSynchronize();
 		cuda_error_check;
-		// DEBUG
-		//Base::value().toMatlab("umvalue");
-		//Base::getTemp().toMatlab("tmpdif");
-#else
-		auto valsview = vals.view();
-		auto diffview = Base::getTemp().view();
-		auto opview = op.value().view();
-		for (int i = 0; i < Base::n_valid(); i++) {
-			valsview(i) = ker.eval(opview(i), diffview(i));
-		}
-#endif
 	}
 
 	__host_device_func void backward_imp(Tensor<Scalar> lastdiff) {
@@ -1002,27 +775,10 @@ struct unarymap_tsexp_t
 		auto lastdifview = lastdiff.view();
 		auto src = op.value().view();
 		auto srcDiff = op.diff().view();
-#ifdef __CUDACC__
-		//auto gradfunc = [=] __device__(typename opExp_t::Scalar s, Scalar dif) {
-		//	auto kern = ker;
-		//	return kern.grad(s) * dif;
-		//};
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, Base::n_valid(), 256);
-		//cudaDeviceSynchronize();
-		//cuda_error_check;
-		//(AccS accs, AccSdiff srcdif, TempDif tempdif, AccDdiff dstdif, size_t n_tol, Kernel ker)
-		unarymap_backward<<<grid_size, block_size>>>(src, srcDiff, temp, lastdifview, Base::n_valid(), ker);
+		auto cfg = make_kernel_param(Base::n_valid(), 256);
+		unarymap_backward<<<cfg.grid, cfg.block>>>(src, srcDiff, temp, lastdifview, Base::n_valid(), ker);
 		cudaDeviceSynchronize();
 		cuda_error_check;
-		//op.diff().toMatlab("umdiff");
-#else
-		for (int i = 0; i < Base::n_valid(); i++) {
-			srcDiff(i) += lastdifview(i) * temp(i);
-		}
-#endif
-		// TODO
-		//Base::releaseTempbuf();
 		op.backward(op.diff());
 	}
 };
@@ -1160,78 +916,20 @@ struct conv_tsexp_t
 		auto srcAcc = op.value().view();
 		auto dstAcc = vals.view();
 		auto tmpacc = Base::getTemp().view();
-#ifdef __CUDACC__
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, Base::n_valid(), 256);
-		conv_kernel<<<grid_size, block_size>>>(Base::n_valid(), srcAcc, dstAcc, tmpacc, ker);
+		auto cfg = make_kernel_param(Base::n_valid(), 256);
+		conv_kernel<<<cfg.grid, cfg.block>>>(Base::n_valid(), srcAcc, dstAcc, tmpacc, ker);
 		cudaDeviceSynchronize();
 		cuda_error_check;
-		// DEBUG
-		//vals.toMatlab("srvalue");
-		//Base::value().toMatlab("convvalue");
-#else
-		typename opExp_t::ScalarType padding = ker.padValue();
-		for (int k = 0; k < dstAcc.dim[2]; k++) {
-			for (int j = 0; j < dstAcc.dim[1]; j++) {
-				for (int i = 0; i < dstAcc.dim[0]; i++) {
-					Scalar sum(0);
-					for (int neighid = 0; neighid < ker.size(); neighid++) {
-						int off[3];
-						ker.neigh(neighid, off);
-						Scalar w = ker.weight(neighid);
-						typename opExp_t::ScalarType val = padding;
-						int neighpos[3]{off[0] + i, off[1] + j, off[2] + k};
-						if (neighpos[0] >= 0 && neighpos[0] < srcAcc.dim[0] &&
-							neighpos[1] >= 0 && neighpos[1] < srcAcc.dim[1] &&
-							neighpos[2] >= 0 && neighpos[2] < srcAcc.dim[2]) {
-							val = srcAcc(neighpos[0], neighpos[1], neighpos[2]);
-						}
-						sum += w * val;
-					}
-					dstAcc(i, j, k) = sum;
-				}
-			}
-		}
-#endif
 	}
 
 	__host_device_func void backward_imp(Tensor<Scalar> lastdiff) {
 		auto dstAcc = lastdiff.view();
 		auto srcAcc = op.diff().view();
 		auto tmpacc = Base::getTemp().view();
-#ifdef __CUDACC__
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, Base::n_valid(), 256);
-		conv_backward_kernel<<<grid_size, block_size>>>(Base::n_valid(), srcAcc, dstAcc, tmpacc, ker);
+		auto cfg = make_kernel_param(Base::n_valid(), 256);
+		conv_backward_kernel<<<cfg.grid, cfg.block>>>(Base::n_valid(), srcAcc, dstAcc, tmpacc, ker);
 		cudaDeviceSynchronize();
 		cuda_error_check;
-		//lastdiff.toMatlab("srcdiff");
-		//op.diff().toMatlab("convdiff");
-#else
-		for (int k = 0; k < srcAcc.dim[2]; k++) {
-			for (int j = 0; j < srcAcc.dim[1]; j++) {
-				for (int i = 0; i < srcAcc.dim[0]; i++) {
-					Scalar sum(0);
-					for (int neighid = 0; neighid < ker.size(); neighid++) {
-						int off[3];
-						ker.neigh(neighid, off);
-						off[0] = i - off[0];
-						off[1] = j - off[1];
-						off[2] = k - off[2];
-						Scalar w = ker.weight(neighid);
-						typename decltype(dstAcc)::Scalar val{0};
-						if (off[0] >= 0 && off[0] < dstAcc.dim[0] &&
-							off[1] >= 0 && off[1] < dstAcc.dim[1] &&
-							off[2] >= 0 && off[2] < dstAcc.dim[2]) {
-							val = dstAcc(off[0], off[1], off[2]);
-						}
-						sum += w * val;
-					}
-					srcAcc(i, j, k) = sum;
-				}
-			}
-		}
-#endif
 		op.backward(op.diff());
 	}
 };
@@ -1293,112 +991,16 @@ struct AssociativeOp
 	}
 };
 
-template<typename Op>
-constexpr bool is_associative_v = std::is_convertible_v<Op, AssociativeOpBase>;
-
 template<typename Scalar>
-struct PnormOp : public AssociativeOp<Scalar, addop_func_t<Scalar>, pow_func_t<Scalar>> {
-	using Base = AssociativeOp<Scalar, addop_func_t<Scalar>, pow_func_t<Scalar>>;
-	PnormOp(Scalar p)
-		: Base(pow_func_t<Scalar>(p)) {}
-};
+struct SumReduceOp : public AssociativeOp<Scalar, addop_func_t<Scalar>, eye_func_t<Scalar>> {};
 
 template<typename Scalar>
 struct LogSumExpOp : public AssociativeOp<Scalar, addop_func_t<Scalar>, exp_func_t<Scalar>> {};
 
 template<typename Scalar>
-struct SumReduceOp : public AssociativeOp<Scalar, addop_func_t<Scalar>, eye_func_t<Scalar>> {};
-
-template<typename Scalar>
 struct PnormReduceOp : public AssociativeOp<Scalar, addop_func_t<Scalar>, pow_func_t<Scalar>> {
 	PnormReduceOp(Scalar p)
 		: AssociativeOp<Scalar, addop_func_t<Scalar>, pow_func_t<Scalar>>(p) {}
-};
-
-template<typename Scalar, typename Kernel, typename opExp_t,
-		 typename ReduceOp, std::enable_if_t<is_associative_v<ReduceOp>, int> = 0>
-struct full_tsexp_t
-	: public tsexp_t<full_tsexp_t<Scalar, Kernel, opExp_t, ReduceOp>, Scalar> {
-	using Base = tsexp_t<full_tsexp_t<Scalar, Kernel, opExp_t, ReduceOp>>;
-	Kernel ker;
-	opExp_t op;
-	Tensor<ReduceOp> reduceRes;
-	// group information
-	//ForwardConfig forwardconf;
-	//BackwardConfig backwardconf;
-
-	// ** ** ** template Configs ** ** ** **
-	struct DefaultForwardConfig {
-		// for stage
-		static constexpr int szSrcBatch = 4;
-		static constexpr int blockSize = 512;
-	};
-	struct DefaultBackwardConfig {
-		// for stage
-		static constexpr int szSrcBatch = 4;
-		static constexpr int n_dstpass = 4;
-		static constexpr int n_srcpass = 4;
-		static constexpr int blockSize = 512;
-
-		// for gather
-		static constexpr int BlockSizeGather = 256;
-		static constexpr int sBatchGather = 4;
-		static constexpr int n_parampass = 2;
-	};
-	// ** ** ** ** ** ** ** ** ** ** ** ** ** ** ** **
-
-	__host_device_func full_tsexp_t(Kernel kerfunc, const opExp_t& opExp)
-		: ker(kerfunc), op(opExp), reduceRes(op.getDim()) {}
-
-	__host_device_func void eval_imp(Tensor<Scalar> vals) {
-		DefaultForwardConfig conf;
-		Base::op.eval();
-		auto srcAcc = Base::op.value().view();
-		auto dstAcc = Base::vals.view();
-#ifdef __CUDACC__
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, Base::n_valid(), conf.blockSize());
-		fullCon_Reduce<<<grid_size, block_size>>>(conf, srcAcc, dstAcc, ker, reduceRes.view());
-		cudaDeviceSynchronize();
-		cuda_error_check;
-#else
-
-#endif
-	}
-
-	__host_device_func void backward_imp(Tensor<Scalar> lastdiff) {
-		using BackwardConfig = DefaultBackwardConfig;
-		BackwardConfig conf;
-		auto srcAcc = Base::op.value().view();
-		auto dstAcc = Base::vals.view();
-		auto gradsAcc = Base::op.diff().view();
-#ifdef __CUDACC__
-		using Ts = typename opExp_t::ScalarType;
-		int n_dststride = ceilDiv(dstAcc.size(), BackwardConfig::n_dstpass);
-		int nBlocksInDststride = ceilDiv(n_dststride, BackwardConfig::blockSize);
-		int n_nBlocksInDststride = ceilDiv(srcAcc.size(), BackwardConfig::szSrcBatch * BackwardConfig::n_srcpass);
-		Tensor<Ts> gradstemp(srcAcc.size(), nBlocksInDststride);
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, n_nBlocksInDststride, 256);
-		fullCon_Reduce_backward_stage<<<grid_size, block_size>>>(conf, srcAcc, dstAcc, ker, reduceRes.view(), gradstemp.view());
-		cudaDeviceSynchronize();
-
-		int sizeGroupGrads = gradstemp.size(1);
-		int n_gradpass = sizeGroupGrads / BackwardConfig::BlockSizeGather;
-		int nBlocksParam = ceilDiv(srcAcc.size() / Kernel::szParamGroup, BackwardConfig::n_parampass * BackwardConfig::sBatchGather);
-		make_kernel_param(&grid_size, &block_size, nBlocksParam * BackwardConfig::BlockSizeGather, BackwardConfig::BlockSizeGather);
-		fullCon_Reduce_backward<<<grid_size, block_size>>>(conf, srcAcc, ker, gradstemp.view(), gradsAcc);
-		cudaDeviceSynchronize();
-#else
-#endif
-		op.backward(op.diff());
-	}
-};
-
-template<typename Scalar, typename Kernel, typename opExp_t>
-struct sparse_tsexp_t
-	: public tsexp_t<sparse_tsexp_t<Scalar, Kernel, opExp_t>, Scalar> {
-	// ToDo
 };
 
 template<typename Scalar, typename Operand, typename ReduceOp>
@@ -1422,46 +1024,34 @@ struct reduce_tsexp_t
 		opr.eval();
 		auto accs = opr.value().view();
 		auto n_src = accs.size();
-		size_t grid_size, block_size;
 		Scalar res = 0;
-#ifdef __CUDACC__
-		make_kernel_param(&grid_size, &block_size, n_src, 512);
-		auto buffer = getTempBuffer(grid_size * sizeof(Scalar));
-		Scalar* pbuf = buffer.data<Scalar>();
-		tensor_reduce<512, false><<<grid_size, block_size>>>(n_src, accs, bracketWrapper{pbuf}, op);
+		auto cfg = make_kernel_param(n_src, 512);
+		auto buffer = getTempBuffer(cfg.grid * sizeof(Scalar));
+		Scalar* pbuf = buffer.template data<Scalar>();
+		tensor_reduce<512, false><<<cfg.grid, cfg.block>>>(n_src, accs, bracketWrapper{pbuf}, op);
 		cudaDeviceSynchronize();
 		cuda_error_check;
-		// for (int i = 0; i < 100; i++) { printf("%f, ", (Scalar)DeviceAddressProxy<Scalar>(pbuf + i)); } printf("\n");
-		auto buffer1 = getTempBuffer((grid_size / 200 + 1) * sizeof(Scalar));
-		while (grid_size > 1) {
-			auto pbuf1 = buffer1.data<Scalar>();
-			n_src = grid_size;
-			make_kernel_param(&grid_size, &block_size, n_src, 512);
-			tensor_reduce<512, true><<<grid_size, block_size>>>(n_src, bracketWrapper{pbuf}, bracketWrapper{pbuf1}, op);
+		auto buffer1 = getTempBuffer((cfg.grid / 200 + 1) * sizeof(Scalar));
+		while (cfg.grid > 1) {
+			auto pbuf1 = buffer1.template data<Scalar>();
+			n_src = cfg.grid;
+			cfg = make_kernel_param(n_src, 512);
+			tensor_reduce<512, true><<<cfg.grid, cfg.block>>>(n_src, bracketWrapper{pbuf}, bracketWrapper{pbuf1}, op);
 			cudaDeviceSynchronize();
 			cuda_error_check;
-			// for (int i = 0; i < 100; i++) { printf("%f, ", (Scalar)DeviceAddressProxy<Scalar>(pbuf1 + i)); } printf("\n");
 			std::swap(pbuf, pbuf1);
 		}
 		cudaMemcpy(&res, pbuf, sizeof(Scalar), cudaMemcpyDeviceToHost);
-#else
-#endif
 		return res;
 	}
 	__host_device_func void backward_imp(Scalar lastdiff) {
 		auto gradacc = opr.diff().view();
-#ifdef __CUDACC__
-		size_t grid_size, block_size;
 		int n_src = gradacc.size();
-		make_kernel_param(&grid_size, &block_size, n_src, 512);
-		// printf("base value = %f, lastdiff  %f\n", Base::value(), lastdiff);
-		tensor_reduce_gradient<512, Scalar><<<grid_size, block_size>>>(opr.value().view(), gradacc, Base::value(), lastdiff, op);
+		auto cfg = make_kernel_param(n_src, 512);
+		tensor_reduce_gradient<512, Scalar><<<cfg.grid, cfg.block>>>(opr.value().view(), gradacc, Base::value(), lastdiff, op);
 		cudaDeviceSynchronize();
 		cuda_error_check;
-		// printf("backward grad sum = %f\n", grad.Sum());
 		opr.backward(opr.diff());
-#else
-#endif
 	}
 };
 

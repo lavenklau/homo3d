@@ -2,8 +2,6 @@
 
 #define __CUDACC__
 #include "cuda.h"
-#include "helper_cuda.h"
-#include "helper_math.h"
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 #include "cuda_texture_types.h"
@@ -53,12 +51,10 @@ void test_gVector(void) {
 #elif 0
 	gv::gVector<double> v1(100000);
 	v1.set(1);
-	v1.concat(v1 + 1).concat(v1 + 2).toMatlab("v1s");
+	v1.concat(v1 + 1).concat(v1 + 2);
 	v1.pitchSumInPlace(1, 10000, 20000, true);
-	v1.toMatlab("v1");
 	gv::gVector<double> v2(1000);
 	v1.gatherPitch(v2.data(), 1, 5, 20000, 1);
-	v2.toMatlab("v2");
 	scanf_s("%s", cbuf);
 #elif 0
 	double* tmp;
@@ -69,7 +65,6 @@ void test_gVector(void) {
 	v1.move(tmp, (nbytepitch / sizeof(double)) * 10);
 	v1.set(1);
 	v1.pitchSumInPlace(5, 10000, nbytepitch / sizeof(double));
-	v1.toMatlab("v1");
 	scanf_s("%s", cbuf);
 #elif 1
 	gv::gVector<double>::Init(1000);
@@ -88,10 +83,8 @@ void test_gVector(void) {
 	gv::gVector<double> v3 /*= v1 * v2.dup(100, 10000, wordpitch)*/;
 	v3 = v1 * 2;
 	v3.pitchSumInPlace(4, 10000, wordpitch);
-	v3.toMatlab("v3");
 	gv::gVector<double> v4(100);
 	v3.gatherPitch(v4.data(), 1, 100, wordpitch, 1);
-	v4.toMatlab("v4");
 #endif
 }
 template<int N>
@@ -491,14 +484,11 @@ mma_arg_pack subsolv_g(int nconstrain, int nvar, double epsimin,
 	std::vector<double> ahost(nconstrain);
 
 #ifdef DEBUG_MMA_OPT
-	P.toMatlab("P");
-	Q.toMatlab("Q");
 #endif
 
 	while (epsi > epsimin) {
 
 #ifdef DEBUG_MMA_OPT
-		x.toMatlab("x");
 #endif
 
 		ux1 = upp - x;
@@ -515,15 +505,11 @@ mma_arg_pack subsolv_g(int nconstrain, int nvar, double epsimin,
 		update_pqlambda_gvec(nconstrain, nvar, uxinv1, xlinv1, p0, q0, P, Q, lam, plam, qlam, gmat, gvec);
 
 #ifdef DEBUG_MMA_OPT
-		gvec.toMatlab("gvec");
-		plam.toMatlab("plam");
-		qlam.toMatlab("qlam");
 #endif
 
 		dpsidx = plam / ux2 - qlam / xl2;
 
 #ifdef DEBUG_MMA_OPT
-		dpsidx.toMatlab("dpsidx");
 #endif
 
 		// residual
@@ -540,13 +526,6 @@ mma_arg_pack subsolv_g(int nconstrain, int nvar, double epsimin,
 
 		// DEBUG
 		{
-			//rex.toMatlab("rex");
-			//rey.toMatlab("rey");
-			//relam.toMatlab("relam");
-			//rexsi.toMatlab("rexsi");
-			//reeta.toMatlab("reeta");
-			//remu.toMatlab("remu");
-			//res.toMatlab("res");
 		}
 
 		// residual norm
@@ -591,19 +570,6 @@ mma_arg_pack subsolv_g(int nconstrain, int nvar, double epsimin,
 #ifdef DEBUG_MMA_OPT
 			// DEBUG
 			{
-				x.toMatlab("x");
-				y.toMatlab("y");
-				a.toMatlab("a");
-				b.toMatlab("b");
-				lam.toMatlab("lam");
-				xsi.toMatlab("xsi");
-				eta.toMatlab("eta");
-				mu.toMatlab("mu");
-				s.toMatlab("s");
-				gvec.toMatlab("gvec");
-				delx.toMatlab("delx");
-				dely.toMatlab("dely");
-				dellam.toMatlab("dellam");
 			}
 #endif
 
@@ -623,14 +589,6 @@ mma_arg_pack subsolv_g(int nconstrain, int nvar, double epsimin,
 			bb = blam.concat(delz);
 			//std::cout << "-- log " << __LINE__ << std::endl;
 
-			//diagx.toMatlab("diagx");
-			//GG.toMatlab("gg");
-			//bb.toMatlab("bb");
-			//diagy.toMatlab("diagy");
-			//diagxinv.toMatlab("diagxinv");
-			//diaglamyi.toMatlab("diaglamyi");
-			//blam.toMatlab("blam");
-
 			//bbhost(nconstrain + 1);
 			bb.get(bbhost.data(), nconstrain + 1);
 			//std::vector<double> xhost(nconstrain + 1);
@@ -638,8 +596,6 @@ mma_arg_pack subsolv_g(int nconstrain, int nvar, double epsimin,
 				//gVector Alam(nconstrain * nconstrain);
 				//std::cout << "-- log " << __LINE__ << std::endl;
 				matrix_AAt_rowmajor<double, double, 512, 1>(GG.data(), nvar, Pwordpitch, nconstrain, diagxinv.data(), Alam.data(), nconstrain);
-
-				//Alam.toMatlab("Alam");
 
 				double* Alam_data = Alam.data();
 				auto add_diag_kernel = [=] __device__(int eid) {
@@ -650,7 +606,6 @@ mma_arg_pack subsolv_g(int nconstrain, int nvar, double epsimin,
 
 				//std::cout << "-- log " << __LINE__ << std::endl;
 #ifdef DEBUG_MMA_OPT
-				Alam.toMatlab("Alam");
 #endif
 
 				//std::vector<double> Alam_host(Alam.size());
@@ -665,11 +620,8 @@ mma_arg_pack subsolv_g(int nconstrain, int nvar, double epsimin,
 				GGdelxdiagx.weightedPitchSumInPlace(4, nvar, Pwordpitch, dlam.data(), true);
 				dx = -delx / diagx - GGdelxdiagx.slice(0, nvar) / diagx;
 #ifdef DEBUG_MMA_OPT
-				GGdelxdiagx.slice(0, nvar).toMatlab("gg");
-				GGdelxdiagx.slice(0, nvar).toMatlab("ggslice");
-				dlam.toMatlab("dlam");
-				delx.toMatlab("delx");
-				diagx.toMatlab("diagx");
+				GGdelxdiagx.slice(0, nvar);
+				GGdelxdiagx.slice(0, nvar);
 #endif
 			} else {
 				std::cerr << "large number of constrain are not supported" << std::endl;
@@ -683,12 +635,6 @@ mma_arg_pack subsolv_g(int nconstrain, int nvar, double epsimin,
 			dzet = -zet + epsi / z - zet * dz / z;
 			ds = -s + epsi / lam - (s * dlam) / lam;
 #ifdef DEBUG_MMA_OPT
-			dx.toMatlab("dx");
-			dy.toMatlab("dy");
-			dxsi.toMatlab("dxsi");
-			deta.toMatlab("deta");
-			dmu.toMatlab("dmu");
-			ds.toMatlab("ds");
 #endif
 			auto xx = y.concat(z).concat(lam).concat(xsi).concat(eta).concat(mu).concat(zet).concat(s);
 			auto dxx = dy.concat(dz).concat(dlam).concat(dxsi).concat(deta).concat(dmu).concat(dzet).concat(ds);
@@ -741,12 +687,6 @@ mma_arg_pack subsolv_g(int nconstrain, int nvar, double epsimin,
 				xlinv1 = 1 / (x - low);
 				update_pqlambda_gvec(nconstrain, nvar, uxinv1, xlinv1, p0, q0, P, Q, lam, plam, qlam, gmat, gvec);
 				//#ifdef DEBUG_MMA_OPT
-				//x.toMatlab("x");
-				//uxinv1.toMatlab("uxinv1");
-				//xlinv1.toMatlab("xlinv1");
-				//plam.toMatlab("plam");
-				//qlam.toMatlab("qlam");
-				//gvec.toMatlab("gvec");
 				//#endif
 				dpsidx = plam / (ux1 * ux1) - qlam / (xl1 * xl1);
 
@@ -766,15 +706,6 @@ mma_arg_pack subsolv_g(int nconstrain, int nvar, double epsimin,
 				steg /= 2;
 
 #ifdef DEBUG_MMA_OPT
-				residu.toMatlab("residu");
-				rex.toMatlab("rex");
-				rey.toMatlab("rey");
-				relam.toMatlab("relam");
-				rexsi.toMatlab("rexsi");
-				reeta.toMatlab("reeta");
-				remu.toMatlab("remu");
-				res.toMatlab("res");
-				dpsidx.toMatlab("dpsidx");
 #endif
 			}
 
@@ -782,26 +713,6 @@ mma_arg_pack subsolv_g(int nconstrain, int nvar, double epsimin,
 			//	printf("line search failed\n");
 			//	std::cout << "-- ittt = " << ittt << ", " << "residunorm = " << residunorm << std::endl;
 			//	std::cout << "-- step " << steg << ", initial step = " << 1. / stminv << std::endl;
-			//	xold.toMatlab("xold");
-			//	yold.toMatlab("yold");
-			//	dx.toMatlab("dx");
-			//	dy.toMatlab("dy");
-			//	GG.toMatlab("GG");
-			//	residu.toMatlab("residu");
-			//	Alam.toMatlab("Alam");
-			//	blam.toMatlab("blam");
-			//	delx.toMatlab("delx");
-			//	dellam.toMatlab("dellam");
-			//	dely.toMatlab("dely");
-			//	gvec.toMatlab("gvec");
-			//	gvec0.toMatlab("gvec0");
-			//	diagx.toMatlab("diagx");
-			//	delx.toMatlab("delx");
-			//	GGxx.toMatlab("GGxx");
-			//	diagy.toMatlab("diagy");
-			//	bb.toMatlab("bb");
-			//	diaglamyi.toMatlab("diaglamyi");
-			//	lamold.toMatlab("lamold");
 			//}
 			//lsindex++;
 
@@ -859,8 +770,6 @@ gv::gVector<double> mmasub_ker(int nconstrain, int nvar,
 		low_g = xvar_g - factor * (xold1_g - low_g);
 		upp_g = xvar_g + factor * (upp_g - xold1_g);
 #ifdef DEBUG_MMA_OPT
-		low_g.toMatlab("low");
-		upp_g.toMatlab("upp");
 #endif
 		lowmin = xvar_g - 10 * (xmax_g - xmin_g);
 		lowmax = xvar_g - 0.01 * (xmax_g - xmin_g);
@@ -871,27 +780,21 @@ gv::gVector<double> mmasub_ker(int nconstrain, int nvar,
 		upp_g.minimize(uppmax);
 		upp_g.maximize(uppmin);
 #ifdef DEBUG_MMA_OPT
-		factor.toMatlab("factor");
 #endif
 	}
 
 #ifdef DEBUG_MMA_OPT
-	low_g.toMatlab("low");
-	upp_g.toMatlab("upp");
-	xvar_g.toMatlab("xvar");
 #endif
 
 	auto zzz1 = low_g + albefa * (xvar_g - low_g);
 	auto zzz2 = xvar_g - move * (xmax_g - xmin_g);
 	auto zzz = zzz1.max(zzz2);
 	gVector alfa = zzz.max(xmin_g);
-	//alfa.toMatlab("alfa");
 
 	auto zzz11 = upp_g - albefa * (upp_g - xvar_g);
 	auto zzz22 = xvar_g + move * (xmax_g - xmin_g);
 	auto zzzz = zzz11.min(zzz22);
 	gVector beta = zzzz.min(xmax_g);
-	//beta.toMatlab("beta");
 
 	auto xmami = (xmax_g - xmin_g).max(1e-5);
 	auto xmamiinv = 1. / xmami;
@@ -910,15 +813,12 @@ gv::gVector<double> mmasub_ker(int nconstrain, int nvar,
 	gVector q0 = ((-df0dx_g).max(0) + pq0) * xl2;
 
 #ifdef DEBUG_MMA_OPT
-	pq0.toMatlab("pq0");
 #endif
 
 	gVector P = dgdx_g.max(0);
 	gVector Q = (-dgdx_g).max(0);
 
 #ifdef DEBUG_MMA_OPT
-	P.toMatlab("P");
-	Q.toMatlab("Q");
 #endif
 
 	// add PQ
@@ -941,10 +841,6 @@ gv::gVector<double> mmasub_ker(int nconstrain, int nvar,
 	}
 
 #ifdef DEBUG_MMA_OPT
-	uxinv.toMatlab("uxinv");
-	xlinv.toMatlab("xlinv");
-	P.toMatlab("P");
-	Q.toMatlab("Q");
 #endif
 
 	gVector bmat(P);
@@ -973,12 +869,6 @@ gv::gVector<double> mmasub_ker(int nconstrain, int nvar,
 	}
 
 #ifdef DEBUG_MMA_OPT
-	b.toMatlab("b");
-	p0.toMatlab("p0");
-	q0.toMatlab("q0");
-	a_g.toMatlab("a");
-	c_g.toMatlab("c");
-	d_g.toMatlab("d");
 #endif
 
 	//return std::make_tuple(
@@ -996,13 +886,6 @@ gv::gVector<double> mmasub_ker(int nconstrain, int nvar,
 		a0, a_g, b, c_g, d_g);
 
 #ifdef DEBUG_MMA_OPT
-	x.toMatlab("xnew");
-	y.toMatlab("ynew");
-	lam.toMatlab("lamnew");
-	xsi.toMatlab("xsinew");
-	eta.toMatlab("etanew");
-	mu.toMatlab("munew");
-	s.toMatlab("snew");
 #endif
 
 	return x;
@@ -1082,7 +965,10 @@ void mmasub_h(int nconstrain, int nvar,
 	cudaMallocPitch(&gx, &nvarpitch, sizeof(double) * nvar, nconstrain);
 	cudaMemcpy2D(gx, nvarpitch, dgdx, nvar * sizeof(double), sizeof(double) * nvar, nconstrain, cudaMemcpyHostToDevice);
 	cuda_error_check;
+	// dgdx_g deep-copies the pitched buffer, so gx can be released right away.
 	gVector dgdx_g(gv::gVectorMap<double>(gx, nvarpitch / sizeof(double) * nconstrain));
+	cudaFree(gx);
+	cuda_error_check;
 
 	gVector low_g(nvar), upp_g(nvar);
 	low_g.set(low);

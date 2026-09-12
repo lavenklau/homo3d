@@ -18,8 +18,6 @@
 #include <tuple>
 #endif
 
-#define AUTODIFF_WITH_MATLAB
-
 #ifndef __CUDACC__
 //#define __device__
 #define __host_device_func
@@ -28,14 +26,6 @@
 #else
 #define __host_device_func __host__ __device__
 #define __device_func __device__
-#endif
-
-#ifdef AUTODIFF_WITH_MATLAB
-#include <string>
-void data2matrix_g(const std::string& mtname, float* pdata, int m, int n = 1, int pitch = -1);
-void data2matrix_g(const std::string& mtname, double* pdata, int m, int n = 1, int pitch = -1);
-void data2matrix_h(const std::string& mtname, float* pdata, int m, int n = 1, int pitch = -1);
-void data2matrix_h(const std::string& mtname, double* pdata, int m, int n = 1, int pitch = -1);
 #endif
 
 namespace homo {
@@ -253,33 +243,6 @@ template<typename Scalar>
 constexpr Scalar one = 1;
 } // namespace details
 using namespace details;
-
-template<bool HasFlag>
-struct ExpFlagBase {
-	__host_device_func bool is_expired(void) {
-		return false;
-	}
-};
-template<>
-struct ExpFlagBase<true> {
-	enum bitflag : int {
-		expired = 1
-	};
-	int flag_;
-	__host_device_func bool is_expired(void) {
-		return flag_ & bitflag::expired;
-	}
-};
-
-template<typename Scalar>
-struct zero_exp_t {
-	__host_device_func Scalar eval() {
-		return 0;
-	}
-	__host_device_func void backward(Scalar lastdiff) {
-		return;
-	}
-};
 
 template<typename Scalar, typename Derived>
 struct diff_func_t {
@@ -725,12 +688,6 @@ __host_device_func auto operator/(T1 s1, opExp2&& op2) {
 }
 // *> end operators
 
-struct dynexp_t
-	: public exp_t<dynexp_t> {
-	virtual float eval(void) = 0;
-	virtual float diff(void) = 0;
-};
-
 template<typename opExp, typename Scalar>
 struct LinearTerm : public exp_t<LinearTerm<opExp, Scalar>, Scalar> {
 	using Base = exp_t<LinearTerm<opExp, Scalar>, Scalar>;
@@ -897,37 +854,6 @@ struct ln_exp_t
 	}
 };
 
-// Heaviside function
-template<typename opExp_t, typename Scalar>
-struct hvs_exp_t
-	: public unary_exp_t<hvs_exp_t, opExp_t, Scalar> {
-	using Base = unary_exp_t<hvs_exp_t, opExp_t, Scalar>;
-	Scalar eta, eps;
-	__host_device_func hvs_exp_t(const opExp_t& op, Scalar eta_ = 10, Scalar eps_ = 1e-3)
-		: Base(op),
-		  eta(eta_), eps(eps_) {}
-
-	__host_device_func Scalar eval_imp(void) {
-		Scalar val = Base::op.eval();
-		if (val < -eta) {
-			return eps;
-		} else if (val < eta) {
-			return 0.75 * (val / eta - pow(val, 3) / (3 * pow(eta, 3))) + 0.5;
-		} else {
-			return 1;
-		}
-	}
-
-	__host_device_func void backward_imp(Scalar lastdiff) {
-		Scalar val = Base::op.value();
-		if (val < -eta || val > eta) {
-			Base::op.backward(0);
-		} else if (val < eta) {
-			Base::op.backward(1. / eta - pow(val, 2) / pow(eta, 3));
-		}
-	}
-};
-
 // sigmoid function
 template<typename opExp_t, typename Scalar>
 struct sgm_exp_t
@@ -944,107 +870,6 @@ struct sgm_exp_t
 	__host_device_func void backward_imp(Scalar lastdiff) {
 		Base::op.backward(lastdiff * s * Base::value() * (1 - Base::value()));
 	}
-};
-
-template<typename subOp, typename Scalar>
-struct ReduceBase {
-	__host_device_func float reduce(const std::vector<Scalar>& values) {
-		static_cast<subOp*>(this)->reduce(values);
-	}
-	__host_device_func void grad(std::vector<Scalar>& grads) {
-		static_cast<subOp*>(this)->grad(grads);
-	}
-};
-
-template<typename Scalar>
-struct LinearReduce
-	: public ReduceBase<LinearReduce<Scalar>, Scalar> {
-	std::vector<Scalar> weights;
-	__host_device_func LinearReduce(const std::vector<Scalar>& weights_)
-		: weights(weights_) {}
-	__host_device_func LinearReduce(int N, Scalar w = 1)
-		: weights(N, w) {}
-	__host_device_func LinearReduce(void) = default;
-	__host_device_func Scalar reduce(const std::vector<Scalar>& values_) {
-		Scalar sum = 0;
-		for (int i = 0; i < values_.size(); i++) {
-			sum += values_[i] * weights[i];
-		}
-	}
-	__host_device_func void grad(std::vector<Scalar>& grads_) {
-		grads_.resize(weights.size());
-	}
-};
-
-template<typename subExp_t, typename reduceOp, typename Scalar>
-struct reduce_exp_t
-	: public exp_t<reduce_exp_t<subExp_t, reduceOp, Scalar>, Scalar> {
-	std::vector<std::shared_ptr<dynexp_t>> exps;
-	reduceOp op;
-	__host_device_func reduce_exp_t(const reduceOp& op_)
-		: op(op_) {}
-	__host_device_func Scalar eval_imp(void) {
-		std::vector<Scalar> values;
-		for (int i = 0; i < exps.size(); i++) {
-			values.emplace_back(exps[i]->eval());
-		}
-		return op.reduce(values);
-	}
-
-	__host_device_func void backward_imp(Scalar lastdiff) {
-		std::vector<Scalar> grads;
-		op.grad(grads);
-		for (int i = 0; i < exps.size(); i++) {
-			exps[i]->backward(lastdiff * grads[i]);
-		}
-	}
-};
-
-template<typename Scalar>
-struct SoftMaxReduce
-	: public ReduceBase<SoftMaxReduce<Scalar>, Scalar> {
-	std::vector<float> weights;
-	std::vector<float> values;
-	float alpha;
-	float maxValue = 0;
-	__host_device_func SoftMaxReduce(float alpha_)
-		: alpha(alpha_) {}
-	__host_device_func SoftMaxReduce(SoftMaxReduce&& red) = default;
-	__host_device_func float reduce(const std::vector<float>& values_) {
-		values = values_;
-		weights.resize(values_.size(), 0);
-		float sum = 0;
-		for (int i = 0; i < values_.size(); i++) {
-			weights[i] = exp(alpha * values_[i]);
-			sum += weights[i];
-		}
-		maxValue = 0;
-		for (int i = 0; i < values_.size(); i++) {
-			weights[i] /= sum;
-			maxValue += weights[i] * values_[i];
-		}
-		return maxValue;
-	}
-
-	__host_device_func void grad(std::vector<float>& grads) {
-		for (int i = 0; i < values.size(); i++) {
-			grads[i] = weights[i] * (1 + alpha * (values[i] - maxValue));
-		}
-	}
-};
-
-template<typename Scalar>
-struct linear_dynexp_t
-	: public reduce_exp_t<linear_dynexp_t<Scalar>, LinearReduce<Scalar>, Scalar> {
-	__host_device_func linear_dynexp_t()
-		: reduce_exp_t<linear_dynexp_t<Scalar>, LinearReduce<Scalar>, Scalar>(LinearReduce<Scalar>()) {}
-};
-
-template<typename Scalar>
-struct softmax_dynexp_t
-	: public reduce_exp_t<softmax_dynexp_t<Scalar>, SoftMaxReduce<Scalar>, Scalar> {
-	__host_device_func softmax_dynexp_t(float alpha)
-		: reduce_exp_t<softmax_dynexp_t<Scalar>, SoftMaxReduce<Scalar>, Scalar>(SoftMaxReduce<Scalar>(alpha)) {}
 };
 
 template<typename Scalar /*= float*/>
@@ -1164,7 +989,7 @@ struct DeviceAddressProxy {
 		return *this;
 	}
 	auto& operator-=(T val) {
-		return operator+=(val);
+		return operator+=(-val);
 	}
 	operator T(void) const {
 		T val;
