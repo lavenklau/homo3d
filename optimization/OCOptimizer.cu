@@ -46,10 +46,9 @@ void OCOptimizer::update(const float* sens, float* rho, float volratio) {
 	float minSens = 0;
 	for (int itn = 0; itn < 20; itn++) {
 		float gSens = (maxSens + minSens) / 2;
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, ne, 256);
-		update_kernel<<<grid_size, block_size>>>(ne, sens, gSens, rho, newrho,
-												 minRho, step_limit, damp);
+		auto cfg = make_kernel_param(ne, 256);
+		update_kernel<<<cfg.grid, cfg.block>>>(ne, sens, gSens, rho, newrho,
+											   minRho, step_limit, damp);
 		cudaDeviceSynchronize();
 		cuda_error_check;
 		float curVol = parallel_sum(newrho, ne) / ne;
@@ -145,9 +144,8 @@ void OCOptimizer::filterSens(float* sens, const float* rho, size_t pitchT, int r
 	cudaMalloc(&newsens, sizeof(float) * reso[1] * reso[2] * pitchT);
 	radial_convker_t<float, Linear> convker(radius, 0, true, FLAGS_periodfilt);
 	devArray_t<int, 3> ereso{reso[0], reso[1], reso[2]};
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, ne, 256);
-	filterSens_kernel<<<grid_size, block_size>>>(ne, ereso, pitchT, sens, rho, filterWeightSum, newsens, convker);
+	auto cfg = make_kernel_param(ne, 256);
+	filterSens_kernel<<<cfg.grid, cfg.block>>>(ne, ereso, pitchT, sens, rho, filterWeightSum, newsens, convker);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 	cudaMemcpy(sens, newsens, sizeof(float) * reso[1] * reso[2] * pitchT, cudaMemcpyDeviceToDevice);
@@ -191,9 +189,8 @@ void OCOptimizer::filterSens(Tensor<float> sens, Tensor<float> rho, float radius
 	Tensor<float> newsens(rho.getDim());
 	newsens.reset(0);
 	radial_convker_t<float, Linear> convker(radius, 0, true, FLAGS_periodfilt);
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, rho.size(), 256);
-	filterSens_Tensor_kernel<<<grid_size, block_size>>>(sens.view(), rho.view(), newsens.view(), convker);
+	auto cfg = make_kernel_param(rho.size(), 256);
+	filterSens_Tensor_kernel<<<cfg.grid, cfg.block>>>(sens.view(), rho.view(), newsens.view(), convker);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 	sens.copy(newsens);
@@ -234,10 +231,9 @@ void OCOptimizer::update(Tensor<float> sens, Tensor<float> rho, float volratio) 
 	float minSens = 0;
 	for (int itn = 0; itn < 20; itn++) {
 		float gSens = (maxSens + minSens) / 2;
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, rho.size(), 256);
-		update_Tensor_kernel<<<grid_size, block_size>>>(sens.view(), gSens, rho.view(), newrho.view(),
-														minRho, step_limit, damp);
+		auto cfg = make_kernel_param(rho.size(), 256);
+		update_Tensor_kernel<<<cfg.grid, cfg.block>>>(sens.view(), gSens, rho.view(), newrho.view(),
+													  minRho, step_limit, damp);
 		cudaDeviceSynchronize();
 		cuda_error_check;
 		//float curVol = parallel_sum(newrho, ne) / ne;

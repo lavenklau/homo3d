@@ -5,14 +5,6 @@
 #include <vector>
 
 namespace culib {
-__host__ void make_kernel_param(dim3& grid_dim, dim3& block_dim, const dim3& num_tasks, int prefer_block_size) {
-	block_dim.x = prefer_block_size;
-	block_dim.y = prefer_block_size;
-	block_dim.z = prefer_block_size;
-	grid_dim.x = (num_tasks.x + prefer_block_size - 1) / prefer_block_size;
-	grid_dim.y = (num_tasks.y + prefer_block_size - 1) / prefer_block_size;
-	grid_dim.z = (num_tasks.z + prefer_block_size - 1) / prefer_block_size;
-}
 
 TempBuffer::TempBuffer(size_t size, bool unify /*= false*/)
 	: unified(unify), siz(size) {
@@ -37,7 +29,8 @@ TempBufferPlace::~TempBufferPlace(void) {
 
 ManagedTempBlock::ManagedTempBlock(ManagedTempBlock&& other)
 	: pool(other.pool), startBlock(other.startBlock), endBlock(other.endBlock) {
-	endBlock = -1;
+	other.startBlock = -1;
+	other.endBlock = -1;
 }
 
 ManagedTempBlock::ManagedTempBlock(TempBufferPool& pool_, int startBlock_, int endBlock_)
@@ -104,6 +97,16 @@ TempBufferPool& getTempPool(void) {
 		Pool = std::make_unique<TempBufferPool>();
 	}
 	return *Pool;
+}
+
+void TempBufferPool::release(void) {
+	buffers.clear();
+	unifiedBuffer.reset();
+	blockPlace32.clear();
+}
+
+void freeTempPool(void) {
+	getTempPool().release();
 }
 
 void show_cuSolver_version(void) {

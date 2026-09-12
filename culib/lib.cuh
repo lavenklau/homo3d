@@ -49,10 +49,6 @@ extern void use4Bytesbank(void);
 extern void use8Bytesbank(void);
 extern void init_cuda(void);
 
-extern void devArray2matlab(const char* pname, float* pdata, size_t len);
-extern void devArray2matlab(const char* pname, double* pdata, size_t len);
-extern void devArray2matlab(const char* pname, int* pdata, size_t len);
-
 //typedef double Scaler;
 
 size_t __host__ __device__ inline round(size_t sz, int K) {
@@ -67,9 +63,13 @@ size_t __host__ __device__ inline ceilDiv(size_t sz, int K) {
 	return round(sz, K) / K;
 }
 
-inline void make_kernel_param(size_t* block_num, size_t* block_size, size_t num_tasks, size_t prefer_block_size) {
-	*block_size = prefer_block_size;
-	*block_num = (num_tasks + prefer_block_size - 1) / prefer_block_size;
+// launch grid/block config for a 1D launch of num_tasks threads
+struct launch_config_t {
+	size_t grid;
+	size_t block;
+};
+inline launch_config_t make_kernel_param(size_t num_tasks, size_t prefer_block_size) {
+	return {(num_tasks + prefer_block_size - 1) / prefer_block_size, prefer_block_size};
 }
 
 struct TempBuffer;
@@ -186,6 +186,7 @@ struct TempBufferPool {
 	friend struct ManagedTempBlock;
 	TempBufferPool(void);
 	TempBufferPlace getBuffer(size_t requireSize);
+	void release(void);
 	template<typename T>
 	ManagedTempBlock getUnifiedBlock(int n = 1) {
 		int requiesize = sizeof(T) * n;
@@ -233,6 +234,7 @@ struct TempBufferPool {
 
 TempBufferPool& getTempPool(void);
 TempBufferPlace getTempBuffer(size_t siz);
+void freeTempPool(void);
 //constexpr size_t node_num = 213 * 213 * 213;
 //constexpr size_t node_task_num = 204;
 
@@ -535,10 +537,8 @@ __global__ void init_array_kernel(T* array, T value, int array_size) {
 
 template<typename T>
 void init_array(T* dev_array, T value, int array_size) {
-	size_t grid_dim;
-	size_t block_dim;
-	make_kernel_param(&grid_dim, &block_dim, array_size, 512);
-	init_array_kernel<<<grid_dim, block_dim>>>(dev_array, value, array_size);
+	auto cfg = make_kernel_param(array_size, 512);
+	init_array_kernel<<<cfg.grid, cfg.block>>>(dev_array, value, array_size);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 }
@@ -730,14 +730,13 @@ DT dump_map_sum(const T* dump, Lambda func, size_t n, DT voidValue = 0) {
 	//using DT = cuda::std::invoke_result_t<Lambda, T>;
 	int szTemp = sizeof(DT) * n / 128;
 	auto buffer = getTempPool().getBuffer(szTemp + 1024);
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, n, 256);
-	blockMapReduce<<<grid_size, block_size>>>(n, gen, redu, voidValue, buffer.template data<>(), szTemp);
+	auto cfg = make_kernel_param(n, 256);
+	blockMapReduce<<<cfg.grid, cfg.block>>>(n, gen, redu, voidValue, buffer.template data<>(), szTemp);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 	// This should be enough
-	DT* d_tmp = buffer.template data<DT>() + round(grid_size, 1024 / sizeof(DT));
-	size_t d_tmp_size = szTemp + 1024 - grid_size * sizeof(DT);
+	DT* d_tmp = buffer.template data<DT>() + round(cfg.grid, 1024 / sizeof(DT));
+	size_t d_tmp_size = szTemp + 1024 - cfg.grid * sizeof(DT);
 	//auto unifiedBlock = getTempPool().getUnifiedBlock<DT>();
 	cudaDeviceSynchronize();
 	cuda_error_check;
@@ -745,11 +744,11 @@ DT dump_map_sum(const T* dump, Lambda func, size_t n, DT voidValue = 0) {
 	DT* devSum;
 	size_t szsum;
 	//std::cout << "DT = " << typeid(DT).name() << std::endl;
-	CheckErr(cub::DeviceReduce::Sum(nullptr, szsum, buffer.template data<DT>(), devSum, grid_size));
+	CheckErr(cub::DeviceReduce::Sum(nullptr, szsum, buffer.template data<DT>(), devSum, cfg.grid));
 	devSum = d_tmp + ceilDiv(szsum, sizeof(DT));
 	//printf("cub require size %zu, have %zu \n", szsum, szTemp);
 	if (szsum < d_tmp_size) {
-		CheckErr(cub::DeviceReduce::Sum(d_tmp, szsum, buffer.template data<DT>(), devSum, grid_size));
+		CheckErr(cub::DeviceReduce::Sum(d_tmp, szsum, buffer.template data<DT>(), devSum, cfg.grid));
 	} else {
 		printf("\033[31mcub require size %zu, provided %zu \033[0m\n", szsum, d_tmp_size);
 	}
@@ -789,15 +788,14 @@ DT sequence_sum(Lambda gen, size_t n, DT voidValue) {
 	//using DT = cuda::std::invoke_result_t<Lambda, T>;
 	int szTemp = sizeof(DT) * n / 128;
 	auto buffer = getTempPool().getBuffer(szTemp + 1024);
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, n, blockSize);
-	blockMapReduce<decltype(gen), decltype(redu), decltype(voidValue), blockSize><<<grid_size, block_size>>>(
+	auto cfg = make_kernel_param(n, blockSize);
+	blockMapReduce<decltype(gen), decltype(redu), decltype(voidValue), blockSize><<<cfg.grid, cfg.block>>>(
 		n, gen, redu, voidValue, buffer.template data<>(), szTemp);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 	// This should be enough
-	DT* d_tmp = buffer.template data<DT>() + round(grid_size, 1024 / sizeof(DT));
-	size_t d_tmp_size = szTemp + 1024 - grid_size * sizeof(DT);
+	DT* d_tmp = buffer.template data<DT>() + round(cfg.grid, 1024 / sizeof(DT));
+	size_t d_tmp_size = szTemp + 1024 - cfg.grid * sizeof(DT);
 	//auto unifiedBlock = getTempPool().getUnifiedBlock<DT>();
 	cudaDeviceSynchronize();
 	cuda_error_check;
@@ -806,11 +804,11 @@ DT sequence_sum(Lambda gen, size_t n, DT voidValue) {
 	//DT sum(0);
 	size_t szsum;
 	//std::cout << "DT = " << typeid(DT).name() << std::endl;
-	CheckErr(cub::DeviceReduce::Sum(nullptr, szsum, buffer.template data<DT>(), psum, grid_size));
+	CheckErr(cub::DeviceReduce::Sum(nullptr, szsum, buffer.template data<DT>(), psum, cfg.grid));
 	psum = d_tmp + ceilDiv(szsum, sizeof(DT));
 	//printf("cub require size %zu, have %zu \n", szsum, szTemp);
 	if (szsum < d_tmp_size) {
-		CheckErr(cub::DeviceReduce::Sum(d_tmp, szsum, buffer.template data<DT>(), psum, grid_size));
+		CheckErr(cub::DeviceReduce::Sum(d_tmp, szsum, buffer.template data<DT>(), psum, cfg.grid));
 	} else {
 		printf("\033[31mcub require size %zu, provided %zu \033[0m\n", szsum, d_tmp_size);
 	}
@@ -1048,8 +1046,7 @@ T parallel_map_sum(const T* indata, size_t array_size, Lambda func, T* sum_dst =
 template<typename T>
 T parallel_diffdot(int v3size, T* v1[3], T* v2[3], T* v3[3], T* v4[3]) {
 	constexpr int blockSize = 512;
-	size_t grid_dim, block_dim;
-	make_kernel_param(&grid_dim, &block_dim, v3size, blockSize);
+	auto cfg = make_kernel_param(v3size, blockSize);
 	devArray_t<const T*, 3> _v1, _v2, _v3, _v4;
 	for (int i = 0; i < 3; i++) {
 		_v1[i] = v1[i];
@@ -1068,8 +1065,7 @@ template<typename T>
 T parallel_diffdiffdot(int v3size, T* v1[3], T* v2[3], T* v3[3], T* v4[3],
 					   T* u1[3], T* u2[3], T* u3[3], T* u4[3]) {
 	constexpr int blockSize = 512;
-	size_t grid_dim, block_dim;
-	make_kernel_param(&grid_dim, &block_dim, v3size, blockSize);
+	auto cfg = make_kernel_param(v3size, blockSize);
 	cuda_error_check;
 	devArray_t<const T*, 3> _v1, _v2, _v3, _v4, _u1, _u2, _u3, _u4;
 	for (int i = 0; i < 3; i++) {
@@ -1112,9 +1108,8 @@ __global__ void vsum_kernel(int n, _TOut* out, T* v1, Args*... args) {
 
 template<typename _Tout, typename T, typename... Args>
 void vsum(int n, _Tout* out, T* v1, Args*... args) {
-	size_t grid_dim, block_dim;
-	make_kernel_param(&grid_dim, &block_dim, n, 512);
-	vsum_kernel<<<grid_dim, block_dim>>>(n, out, v1, args...);
+	auto cfg = make_kernel_param(n, 512);
+	vsum_kernel<<<cfg.grid, cfg.block>>>(n, out, v1, args...);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 }
@@ -1145,9 +1140,8 @@ struct array_t {
 	__host__ void operator=(const array_t<T1>& ar1) const {
 		T* dst = _ptr;
 		T1* src = ar1._ptr;
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, _len, 512);
-		map<<<grid_size, block_size>>>(_len, [=] __device__(int eid) {
+		auto cfg = make_kernel_param(_len, 512);
+		map<<<cfg.grid, cfg.block>>>(_len, [=] __device__(int eid) {
 			dst[eid] = src[eid];
 		});
 		cudaDeviceSynchronize();
@@ -1158,9 +1152,8 @@ struct array_t {
 	template<typename F /*, std::enable_if_t<std::is_arithmetic_v<F>, int> = 0*/>
 	__host__ array_t& operator/=(F f) {
 		T* src = _ptr;
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, _len, 512);
-		map<<<grid_size, block_size>>>(_len, [=] __device__(int eid) {
+		auto cfg = make_kernel_param(_len, 512);
+		map<<<cfg.grid, cfg.block>>>(_len, [=] __device__(int eid) {
 			src[eid] /= f;
 		});
 		cudaDeviceSynchronize();
@@ -1172,9 +1165,8 @@ struct array_t {
 	__host__ array_t& operator/=(const array_t<F>& f2) {
 		T* op1 = _ptr;
 		const F* op2 = f2._ptr;
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, _len, 512);
-		map<<<grid_size, block_size>>>(_len, [=] __device__(int eid) {
+		auto cfg = make_kernel_param(_len, 512);
+		map<<<cfg.grid, cfg.block>>>(_len, [=] __device__(int eid) {
 			op1[eid] /= op2[eid];
 		});
 		cudaDeviceSynchronize();
@@ -1185,9 +1177,8 @@ struct array_t {
 	template<typename F>
 	__host__ array_t& operator*=(F f) {
 		T* src = _ptr;
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, _len, 512);
-		map<<<grid_size, block_size>>>(_len, [=] __device__(int eid) {
+		auto cfg = make_kernel_param(_len, 512);
+		map<<<cfg.grid, cfg.block>>>(_len, [=] __device__(int eid) {
 			src[eid] *= f;
 		});
 		cudaDeviceSynchronize();
@@ -1198,9 +1189,8 @@ struct array_t {
 	template<typename F>
 	__host__ array_t& operator+=(F f) {
 		T* src = _ptr;
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, _len, 512);
-		map<<<grid_size, block_size>>>(_len, [=] __device__(int eid) {
+		auto cfg = make_kernel_param(_len, 512);
+		map<<<cfg.grid, cfg.block>>>(_len, [=] __device__(int eid) {
 			src[eid] += f;
 		});
 		cudaDeviceSynchronize();
@@ -1211,9 +1201,8 @@ struct array_t {
 	template<typename F>
 	__host__ array_t& operator-=(F f) {
 		T* src = _ptr;
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, _len, 512);
-		map<<<grid_size, block_size>>>(_len, [=] __device__(int eid) {
+		auto cfg = make_kernel_param(_len, 512);
+		map<<<cfg.grid, cfg.block>>>(_len, [=] __device__(int eid) {
 			src[eid] -= f;
 		});
 		cudaDeviceSynchronize();
@@ -1266,11 +1255,10 @@ void randArray(T** dst, int nArray, size_t len, T low = T{0}, T upp = T{0}) {
 	curandSetPseudoRandomGeneratorSeed(generator, (int)time(nullptr));
 	_randArrayGen<T> gen;
 	gen.gen(generator, dst, nArray, len);
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, len, 512);
+	auto cfg = make_kernel_param(len, 512);
 	for (int i = 0; i < nArray; i++) {
 		T* pdata = dst[i];
-		culib::traverse<<<grid_size, block_size>>>(pdata, len, [=] __device__(int tid) {
+		culib::traverse<<<cfg.grid, cfg.block>>>(pdata, len, [=] __device__(int tid) {
 			T value = pdata[tid];
 			value = low + value * (upp - low);
 			return value;
@@ -1426,9 +1414,8 @@ struct gBitSAT {
 
 template<typename Lambda>
 void parallel_do(int ntask, int block_size, Lambda work) {
-	size_t grid_size, blockSize;
-	make_kernel_param(&grid_size, &blockSize, ntask, block_size);
-	traverse_noret<<<grid_size, blockSize>>>(ntask, work);
+	auto cfg = make_kernel_param(ntask, block_size);
+	traverse_noret<<<cfg.grid, cfg.block>>>(ntask, work);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 }

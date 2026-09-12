@@ -89,9 +89,8 @@ void homo::vdb2tensor(const std::string& fname, TensorView<float> tf, bool inter
 	cudaTextureObject_t tensorTex = 0;
 	CheckErr(cudaCreateTextureObject(&tensorTex, &resDesc, &tensorTexDesc, NULL));
 
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, tf.size(), 256);
-	vdb2tensor_kernel<<<grid_size, block_size>>>(tf, tensorTex);
+	auto cfg = make_kernel_param(tf.size(), 256);
+	vdb2tensor_kernel<<<cfg.grid, cfg.block>>>(tf, tensorTex);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 
@@ -116,9 +115,8 @@ __global__ void projectTensor_kernel(TensorView<T> tf, float beta, float tau, fl
 }
 
 void homo::tensorProject(TensorView<float> tf, float beta, float tau, float a, float b) {
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, tf.size(), 256);
-	projectTensor_kernel<<<grid_size, block_size>>>(tf, beta, tau, a, b);
+	auto cfg = make_kernel_param(tf.size(), 256);
+	projectTensor_kernel<<<cfg.grid, cfg.block>>>(tf, beta, tau, a, b);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 }

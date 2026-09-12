@@ -434,10 +434,9 @@ void homo::Grid::gs_relaxation_ex(float w_SOR /*= 1.f*/) {
 		if (i < 3) gridCellReso[i] = cellReso[i];
 	}
 	for (int i = 0; i < 8; i++) {
-		size_t grid_size, block_size;
 		int n_gs = gsVertexEnd[i] - (i == 0 ? 0 : gsVertexEnd[i - 1]);
-		make_kernel_param(&grid_size, &block_size, n_gs * 8, 32 * 8);
-		gs_relaxation_otf_kernel_opt << <grid_size, block_size >> > (i, rho_g, gridCellReso, vertflag, cellflag, w_SOR);
+		auto cfg = make_kernel_param(n_gs * 8, 32 * 8);
+		gs_relaxation_otf_kernel_opt <<<cfg.grid, cfg.block>>> (i, rho_g, gridCellReso, vertflag, cellflag, w_SOR);
 		cudaDeviceSynchronize();
 		cuda_error_check;
 		enforce_period_boundary(u_g);
@@ -506,9 +505,8 @@ void homo::Grid::interpDensityFrom(const std::string& fname, VoxelIOFormat frmat
 	cudaTextureObject_t rhoTex = 0;
 	CheckErr(cudaCreateTextureObject(&rhoTex, &resDesc, &rhoTexDesc, NULL));
 
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, n_cells(), 256);
-	interpDensityFrom_kernel<<<grid_size, block_size>>>(rho_g, rhoTex);
+	auto cfg = make_kernel_param(n_cells(), 256);
+	interpDensityFrom_kernel<<<cfg.grid, cfg.block>>>(rho_g, rhoTex);
 	cudaDeviceSynchronize();
 	cuda_error_check;
 
@@ -915,9 +913,8 @@ void homo::Grid::update_residual_ex(void) {
 	VertexFlags* vflags = vertflag;
 	CellFlags* eflags = cellflag;
 	if (assemb_otf) {
-		size_t grid_size, block_size;
-		make_kernel_param(&grid_size, &block_size, n_gsvertices() * 8, 32 * 8);
-		update_residual_otf_kernel_opt << <grid_size, block_size >> > (n_gsvertices(), rho_g, gridCellReso,
+		auto cfg = make_kernel_param(n_gsvertices() * 8, 32 * 8);
+		update_residual_otf_kernel_opt <<<cfg.grid, cfg.block>>> (n_gsvertices(), rho_g, gridCellReso,
 			vflags, eflags, diag_strength);
 		cudaDeviceSynchronize();
 		cuda_error_check;
