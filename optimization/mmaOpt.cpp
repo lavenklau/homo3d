@@ -1,8 +1,7 @@
-﻿#include <iostream>
+#include <iostream>
 #include "cuda_runtime.h"
 #include "mmaOpt.h"
 #include <tuple>
-#include "matlab/matlab_utils.h"
 
 //#define EIGEN_USE_MKL
 #include "Eigen/Eigen"
@@ -60,9 +59,6 @@ void solveLinearHost(int nconstrain, const double* Alamhost, const double* ahost
 	Eigen::ColPivHouseholderQR<Eigen::Matrix<double, -1, -1>> solver(A);
 
 	Eigen::Matrix<double, -1, 1> x = solver.solve(b);
-
-	//eigen2ConnectedMatlab("A", A);
-	//eigen2ConnectedMatlab("b", b);
 
 	for (int i = 0; i < nconstrain + 1; i++)
 		xhost[i] = x[i];

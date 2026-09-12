@@ -1,6 +1,5 @@
 #include "homogenization.h"
 #include "templateMatrix.h"
-#include "matlab/matlab_utils.h"
 #include <chrono>
 #include <iomanip>
 
@@ -18,7 +17,7 @@ std::string setPathPrefix(const std::string& str) {
 	return outpath;
 }
 
-size_t uid_t::uid;
+size_t uid_t::uid_counter = 0;
 
 } // namespace homo
 
@@ -48,8 +47,6 @@ void homo::Homogenization::build(cfg::HomoConfig homconfig) {
 	//mgconf.namePrefix;
 	mg_->build(mgconf);
 	grid = mg_->getRootGrid();
-
-	grid->test();
 
 	initTemplateMatrix(1, getMem(), config.youngsModulu, config.poissonRatio);
 

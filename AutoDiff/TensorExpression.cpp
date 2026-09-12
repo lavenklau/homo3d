@@ -1,6 +1,5 @@
 #define _USE_MATH_DEFINES
 #include "TensorExpression.h"
-#include "matlab/matlab_utils.h"
 #include "voxelIO/openvdb_wrapper_t.h"
 
 #define cuda_error_check                                                                                                                    \
@@ -12,21 +11,6 @@
 	} while (0)
 
 namespace homo {
-void tensor2matlab(const std::string& tname, const TensorView<float>& tf) {
-	Eigen::Matrix<float, -1, 1> tfdata(tf.size(), 1);
-	cudaMemcpy2D(tfdata.data(), tf.size(0) * sizeof(float),
-				 tf.data(), tf.getPitchT() * sizeof(float), tf.size(0) * sizeof(float), tf.size(1) * tf.size(2), cudaMemcpyDeviceToHost);
-	cuda_error_check;
-	eigen2ConnectedMatlab(tname, tfdata);
-}
-void tensor2matlab(const std::string& tname, const TensorView<double>& tf) {
-	Eigen::Matrix<double, -1, 1> tfdata(tf.size(), 1);
-	cudaMemcpy2D(tfdata.data(), tf.size(0) * sizeof(double),
-				 tf.data(), tf.getPitchT() * sizeof(double), tf.size(0) * sizeof(double), tf.size(1) * tf.size(2), cudaMemcpyDeviceToHost);
-	cuda_error_check;
-	eigen2ConnectedMatlab(tname, tfdata);
-}
-
 void tensor2vdb(const std::string& fname, const TensorView<float>& tf) {
 	std::vector<float> vhost(tf.size());
 	cudaMemcpy2D(vhost.data(), tf.size(0) * sizeof(float),

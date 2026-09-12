@@ -2,7 +2,6 @@
 //#include "snippet.h"
 #include "utils.h"
 #include "math.h"
-#include "matlab/matlab_utils.h"
 
 // Kelam * 72
 char kelam72[] = {
@@ -162,7 +161,6 @@ void initTemplateMatrix(
 
 	fKe = Ke.cast<float>();
 
-	eigen2ConnectedMatlab("KE", Ke);
 	//g_Ke = (double*)gm.add_buf("template matrix buf ", sizeof(Ke), Ke.data());
 
 	// DEBUG

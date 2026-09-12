@@ -364,8 +364,7 @@ double homo::Homogenization::elasticMatrix(int i, int j) {
 	NO_SUPPORT_ERROR;
 #if 0
 	grid->useGrid_g();
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, grid->n_gsvertices(), 256);
+	auto cfg = make_kernel_param(grid->n_gsvertices(), 256);
 	auto Cebuffer = getTempPool().getBuffer(grid->n_gscells() * sizeof(float));
 	float* Ce = Cebuffer.template data<float>();
 	init_array(Ce, 0.f, grid->n_gscells());
@@ -377,18 +376,9 @@ double homo::Homogenization::elasticMatrix(int i, int j) {
 	grid->v3_upload(uj.data(), grid->uchar_h[j]);
 	auto vflags = grid->vertflag;
 	auto eflags = grid->cellflag;
-	elasticMatrix_kernel_wise << <grid_size, block_size >> > (nv, i, j, ui, uj, rholist, vflags, eflags, Ce);
+	elasticMatrix_kernel_wise <<<cfg.grid, cfg.block>>> (nv, i, j, ui, uj, rholist, vflags, eflags, Ce);
 	cudaDeviceSynchronize();
 	cuda_error_check;
-
-	// DEBUG
-	if (0) {
-		char buf[100];
-		sprintf_s(buf, "Ce%d%d", i, j);
-		std::vector<float> cehost(grid->n_gscells());
-		cudaMemcpy(cehost.data(), Ce, sizeof(float) * grid->n_gscells(), cudaMemcpyDeviceToHost);
-		grid->array2matlab(buf, cehost.data(), grid->n_gscells());
-	}
 
 	float C = dump_array_sum(Ce, grid->n_gscells());
 	return C;
@@ -510,7 +500,6 @@ void homo::Homogenization::elasticMatrix(double C[6][6]) {
 		VertexFlags* vflags = grid->vertflag;
 		CellFlags* eflags = grid->cellflag;
 		int nv = grid->n_gsvertices();
-		size_t grid_size, block_size;
 		// prefecth unified memory data to device memory
 		devArray_t<devArray_t<half2*, 3>, 3> dst;
 		for (int k = 0; k < 3; k++) {
@@ -518,19 +507,19 @@ void homo::Homogenization::elasticMatrix(double C[6][6]) {
 			dst[1][k] = reinterpret_cast<half2*>(grid->u_g[k]);
 			dst[2][k] = reinterpret_cast<half2*>(grid->r_g[k]);
 		}
-		make_kernel_param(&grid_size, &block_size, nv, 256);
-		fillTotalVertices_kernel<<<grid_size, block_size>>>(nv, vflags, ucharlist, dst);
+		auto cfg = make_kernel_param(nv, 256);
+		fillTotalVertices_kernel<<<cfg.grid, cfg.block>>>(nv, vflags, ucharlist, dst);
 		cudaDeviceSynchronize();
 		cuda_error_check;
 		// compute element energy and sum
-		make_kernel_param(&grid_size, &block_size, nv * 8, 256);
-		int pitchT = round(grid_size, 128);
+		cfg = make_kernel_param(nv * 8, 256);
+		int pitchT = round(cfg.grid, 128);
 		auto buffer = getTempBuffer(pitchT * 21 * sizeof(float));
 		init_array(buffer.template data<float>(), 0.f, pitchT * 21);
 		//_TIC("ematopt")
-		elasticMatrix_kernel_opt<<<grid_size, block_size>>>(nv, dst,
-															rho_g, vflags, eflags,
-															buffer.template data<float>(), pitchT);
+		elasticMatrix_kernel_opt<<<cfg.grid, cfg.block>>>(nv, dst,
+														  rho_g, vflags, eflags,
+														  buffer.template data<float>(), pitchT);
 		cudaDeviceSynchronize();
 		//_TOC;
 		//printf("elasticMatrix_kernel_opt  time = %4.2f ms\n", tictoc::get_record("ematopt"));
@@ -558,9 +547,8 @@ void homo::Homogenization::elasticMatrix(double C[6][6]) {
 	} else {
 		NO_SUPPORT_ERROR;
 #if 0
-		size_t grid_size, block_size;
 		int nv = grid->n_gsvertices();
-		make_kernel_param(&grid_size, &block_size, nv * 2, 256);
+		auto cfg = make_kernel_param(nv * 2, 256);
 		auto buffer = getTempBuffer(grid_size * sizeof(float));
 		float* Ce = buffer.template data<float>();
 		init_array(Ce, 0.f, grid_size);
@@ -574,7 +562,7 @@ void homo::Homogenization::elasticMatrix(double C[6][6]) {
 				devArray_t<float*, 3> uj{ grid->uchar_g[0], grid->uchar_g[1], grid->uchar_g[2] };
 				grid->v3_upload(uj.data(), grid->uchar_h[j]);
 				//_TIC("ematopt");
-				elasticMatrix_kernel_wise_opt << <grid_size, block_size >> > (nv, i, j, ui, uj, rholist, vflags, eflags, Ce);
+				elasticMatrix_kernel_wise_opt <<<cfg.grid, cfg.block>>> (nv, i, j, ui, uj, rholist, vflags, eflags, Ce);
 				cudaDeviceSynchronize();
 				//_TOC;
 				//printf("elasticMatrix_kernel_wise_opt  time = %4.2f ms\n", tictoc::get_record("ematopt"));
@@ -903,8 +891,7 @@ void homo::Homogenization::Sensitivity(float dC[6][6], float* sens, int pitchT, 
 	auto eflags = grid->cellflag;
 	auto rholist = grid->rho_g;
 	float volume = grid->n_cells();
-	size_t grid_size, block_size;
-	make_kernel_param(&grid_size, &block_size, nv, 256);
+	auto cfg = make_kernel_param(nv, 256);
 	if (!config.useManagedMemory) {
 		NO_SUPPORT_ERROR;
 #if 0
@@ -917,8 +904,8 @@ void homo::Homogenization::Sensitivity(float dC[6][6], float* sens, int pitchT, 
 #if 0
 #else
 				use4Bytesbank();
-				make_kernel_param(&grid_size, &block_size, nv * 2, 256);
-				Sensitivity_kernel_wise_opt_2 << <grid_size, block_size >> > (nv, vflags, eflags,
+				auto cfg = make_kernel_param(nv * 2, 256);
+				Sensitivity_kernel_wise_opt_2 <<<cfg.grid, cfg.block>>> (nv, vflags, eflags,
 					iStrain, jStrain, ui, uj,
 					rholist, dc, sens, volume, pitchT, lexiOrder);
 #endif
@@ -941,14 +928,14 @@ void homo::Homogenization::Sensitivity(float dC[6][6], float* sens, int pitchT, 
 			dst[1][k] = reinterpret_cast<half2*>(grid->u_g[k]);
 			dst[2][k] = reinterpret_cast<half2*>(grid->r_g[k]);
 		}
-		make_kernel_param(&grid_size, &block_size, nv, 256);
-		fillTotalVertices_kernel<<<grid_size, block_size>>>(nv, vflags, uchar, dst);
+		auto cfg = make_kernel_param(nv, 256);
+		fillTotalVertices_kernel<<<cfg.grid, cfg.block>>>(nv, vflags, uchar, dst);
 		cudaDeviceSynchronize();
 		cuda_error_check;
-		make_kernel_param(&grid_size, &block_size, nv * 8, 256);
-		Sensitivity_kernel_opt_2<<<grid_size, block_size>>>(nv, vflags, eflags,
-															dst,
-															rholist, dc, sens, volume, pitchT, lexiOrder);
+		cfg = make_kernel_param(nv * 8, 256);
+		Sensitivity_kernel_opt_2<<<cfg.grid, cfg.block>>>(nv, vflags, eflags,
+														  dst,
+														  rholist, dc, sens, volume, pitchT, lexiOrder);
 		cudaDeviceSynchronize();
 		cuda_error_check;
 	}
@@ -961,16 +948,4 @@ void homo::Homogenization::Sensitivity(float dC[6][6], float* sens, int pitchT, 
 	}
 	cudaDeviceSynchronize();
 	cuda_error_check;
-
-	// DEBUG
-	if (0) {
-		int slist = grid->cellReso[2] * grid->cellReso[1] * grid->cellReso[2];
-		std::vector<float> senslist(slist);
-		cudaMemcpy2D(senslist.data(), grid->cellReso[0] * sizeof(float),
-					 sens, pitchT * sizeof(float),
-					 grid->cellReso[0] * sizeof(float), grid->cellReso[1] * grid->cellReso[2],
-					 cudaMemcpyDeviceToHost);
-		cuda_error_check;
-		grid->array2matlab("senslist", senslist.data(), senslist.size());
-	}
 }
