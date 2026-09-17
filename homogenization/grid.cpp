@@ -302,10 +302,6 @@ VT** Grid::getDisplacement(void) {
 //	v3_copy(fchar_g[k], f);
 //}
 
-double Grid::relative_residual(void) {
-	return v3_norm(r_g, true) / (v3_norm(f_g, true) + 1e-30);
-}
-
 double homo::Grid::residual(void) {
 	return v3_norm(r_g);
 }
@@ -398,26 +394,6 @@ void homo::Grid::assembleHostMatrix(void) {
 		transBase.col(i).normalize();
 	}
 	printf("Coarse system degenerate rank = %d\n", int(transBase.cols()));
-}
-
-void homo::Grid::gs_relaxation_profile(float w_SOR /*= 1.f*/) {
-	//cudaProfilerStart();
-	_TIC("relx")
-	gs_relaxation(w_SOR);
-	_TOC;
-	printf("relaxation time  =   %4.2f ms\n", tictoc::get_record("relx"));
-	//cudaProfilerStop();
-	cudaDeviceSynchronize();
-}
-
-void homo::Grid::update_residual_profile(void) {
-	cudaProfilerStart();
-	_TIC("updater")
-	update_residual();
-	_TOC;
-	printf("update res time  =   %4.2f ms\n", tictoc::get_record("updater"));
-	cudaProfilerStop();
-	cudaDeviceSynchronize();
 }
 
 float homo::Grid::diagPrecondition(float strength) {

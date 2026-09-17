@@ -250,10 +250,6 @@ struct Grid {
 
 	void gs_relaxation(float w_SOR = 1.f, int times_ = 1);
 
-	void gs_relaxation_profile(float w_SOR = 1.f);
-
-	void update_residual_profile(void);
-
 	float diagPrecondition(float strength);
 
 	void prolongate_correction(void);
@@ -296,10 +292,6 @@ struct Grid {
 
 	void translateForce(int type_, VT* v[3]); // 1. zero dirichlet force; 2. zero global translation
 
-	void reset_density(float rho);
-
-	void randDensity(void);
-
 	void getDensity(std::vector<float>& rho, bool lexiOrder = false);
 
 	void getGsVertexPos(std::vector<int> pos[3]);
@@ -316,10 +308,6 @@ struct Grid {
 
 	void readDensity(const std::string& fname, std::vector<float>& values, int reso[3], VoxelIOFormat frmat);
 
-	float sumDensity(void);
-
-	double projectDensityToVolume(float vol, float beta = 20);
-
 	//double elasticTensorElement(int i, int j);
 
 	void readDisplacement(const std::string& fname);
@@ -334,10 +322,6 @@ struct Grid {
 	void checkPeriodVertex(VT* v[3]);
 
 	void checkPeriodStencil();
-
-	std::vector<VertexFlags> getVertexflags(void);
-
-	std::vector<CellFlags> getCellflags(void);
 
 	void setMacroStrainDisplacement(int i, VT* u[3]);
 
@@ -360,7 +344,6 @@ struct Grid {
 	void v3_stencilOnLeft(VT* v[3], VT* Kv[3]);
 	void v3_average(VT* v[3], VT vMean[3], bool removePeriodDof = false);
 
-	double relative_residual(void);
 	double residual(void);
 	//double compliance(double* displacement[3]);
 	double compliance(VT* u[3], VT* v[3]);
